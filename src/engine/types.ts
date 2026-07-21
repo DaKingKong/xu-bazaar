@@ -109,6 +109,44 @@ export interface BattleState {
   winner?: Side | null;
   // 第一版占位
   fieldEffect?: string | null;
+  // 静态卡牌原型表（defId -> CardDef）。随状态一并携带，令 engine 入口保持
+  // (state, action, rng) 的纯函数签名，无需额外传入数据层引用。
+  cardDb: Record<string, CardDef>;
+}
+
+// --- 动作与初始化契约 ---
+
+// 出牌动作：
+// - target：指向性卡（直接攻击卡 / 指向性法术）的目标。
+// - position：仆从召唤卡的插入位置（board 中的下标，0..board.length）。
+export interface PlayCardAction {
+  cardId: EntityId;
+  target?: TargetRef;
+  position?: number;
+}
+
+export interface HeroInit {
+  attack: number;
+  hp: number;
+}
+
+export interface PlayerInit {
+  hero: HeroInit;
+  deck: CardInstance[];
+}
+
+export interface BattleInit {
+  player: PlayerInit;
+  enemy: PlayerInit;
+  cardDb: Record<string, CardDef>;
+  // 起始行动方，默认 'enemy'（回合流程：敌人 → 玩家 → 自动战斗）。
+  startingSide?: Side;
+}
+
+// 结算类入口的统一返回结构。
+export interface BattleResult {
+  state: BattleState;
+  events: BattleEvent[];
 }
 
 // --- 战斗事件（供 UI 播放动画）---
@@ -134,3 +172,5 @@ export type Rng = () => number;
 export const MAX_ENERGY = 4;
 export const MAX_HAND_SIZE = 10;
 export const BOARD_CAPACITY = 7;
+export const FIRST_TURN_DRAW = 5;
+export const PER_TURN_DRAW = 2;

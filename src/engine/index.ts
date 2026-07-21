@@ -1,7 +1,20 @@
 // 战斗引擎公共入口。
 //
-// 第一版骨架（M1）：仅导出核心类型与常量。
-// 战斗规则（抽牌/能量/疲劳/出牌结算/自动战斗/AI）将在 M2–M4 中实现，
-// 且必须集中在本目录内（纯 TS，不依赖 UI）。参见 docs/implementation-plan.md。
+// 纯 TS，不依赖 UI（见 docs/architecture.md）。对外暴露核心类型、常量、
+// 随机源工具与五个战斗入口（见 docs/implementation-plan.md §3）。
 
 export * from './types.ts';
+export { makeRng, randInt, pick } from './rng.ts';
+export { legalTargets, playCard } from './play.ts';
+export { runAutoBattle } from './autoBattle.ts';
+export { chooseCombo, runAiPlays } from './ai.ts';
+export { createBattle, runEnemyTurn, endTurn } from './battle.ts';
+export {
+  otherSide,
+  sideState,
+  boardUsage,
+  isEnded,
+  tauntsOf,
+  heroRef,
+  minionRef,
+} from './helpers.ts';

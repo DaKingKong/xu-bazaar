@@ -4,19 +4,22 @@
 
 ### Project state
 
-This is an early-stage repo. As of the M1 milestone it is a **Vite + React + TypeScript**
-skeleton (see `docs/implementation-plan.md` for the M1–M7 roadmap). The battle engine, AI,
-and full battle UI/animations described in `docs/` are **not implemented yet** — `src/engine`,
-`src/store`, and `src/ui` currently hold core types plus a small placeholder demo scene.
+First-version battle system (M1–M7) is implemented: pure-TS engine (`createBattle` /
+`playCard` / `endTurn` / `runAutoBattle` / `runEnemyTurn`), Zustand store bridge with
+event playback, and a playable battle UI with Framer Motion. Equipment / relics / skills /
+field-effect slots are UI placeholders only. Meta systems (growth, unlocks, deckbuilding)
+are out of scope for v1 — see `README.md` and `docs/implementation-plan.md`.
 
 ### Services
 
 There is a single service: the Vite dev web app. Standard commands live in `package.json`
 `scripts` — use those rather than duplicating them here:
 
-- `npm run dev` — dev server on `http://localhost:5173` (HMR enabled).
+- `npm run dev` — dev server on `http://localhost:5173/xu-bazaar/` (HMR; `base` is `/xu-bazaar/` for GitHub Pages).
 - `npm test` — Vitest (jsdom). `npm run build` — `tsc -b` type-check then `vite build`.
 - `npm run lint` — ESLint. `npm run format` / `npm run format:check` — Prettier.
+- GitHub Pages: push to `main` runs `.github/workflows/deploy.yml` →
+  `https://DaKingKong.github.io/xu-bazaar/` (Settings → Pages source must be GitHub Actions).
 
 ### Non-obvious notes
 
@@ -31,3 +34,5 @@ There is a single service: the Vite dev web app. Standard commands live in `pack
   Don't reformat `docs/`; `npm run format:check` intentionally ignores them.
 - TS uses `verbatimModuleSyntax` + `allowImportingTsExtensions`, so intra-`src` imports must
   include the `.ts`/`.tsx` extension and type-only imports must use `import type`.
+- `vite.config.ts` sets an absolute `root` via `import.meta.url` so Vitest does not break on
+  Windows when the shell cwd uses a different drive-letter case (`d:` vs `D:`).

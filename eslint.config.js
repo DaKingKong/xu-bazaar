@@ -24,6 +24,11 @@ export default defineConfig([
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+      // 允许以下划线前缀标记「有意保留但未使用」的参数（如契约要求的 rng）。
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
     },
   },
   // Enforce the architecture rule from docs: src/engine must not depend on

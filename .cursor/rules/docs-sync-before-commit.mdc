@@ -1,0 +1,39 @@
+---
+description: Keep docs in sync with implementation status before any git commit
+alwaysApply: true
+---
+
+# Docs sync before commit
+
+Before creating a git commit (or staging a commit the user asked for), update project status docs so they match the **current** codebase — not the aspirational design.
+
+## When this applies
+
+- Any commit that changes `src/**`, public APIs, scripts, toolchain, or milestone progress
+- Skip only for pure chore commits that cannot affect documented status (e.g. typo-only in an unrelated file with no behavior change)
+
+## What to update
+
+Check and revise as needed (do not invent features; mark only what exists):
+
+1. **`README.md` → 进度** — current milestone (M1–M7), what works now, what is still TODO
+2. **`AGENTS.md` → Project state** — one honest paragraph: what is implemented vs placeholder
+3. **`docs/implementation-plan.md`** — milestone DoD status; note completed vs remaining work without rewriting the whole plan
+4. **Design docs** (`docs/architecture.md`, `docs/battle-design.md`, `docs/data-model.md`) — only if the commit changes behavior or contracts those docs describe; fix contradictions, do not add speculative APIs
+
+## How
+
+1. Diff the staged/unstaged implementation changes against the docs above
+2. Edit docs in the same change set (or immediately before `git commit`)
+3. Stage the doc updates with the implementation files
+4. Then commit
+
+## Examples
+
+```text
+❌ BAD: Commit M2 draw/energy engine code while README still says "当前处于 M1"
+❌ BAD: AGENTS.md still claims "battle engine … not implemented" after engine modules land
+✅ GOOD: README 进度 → M2; AGENTS.md lists working engine entry points; plan notes M2 DoD done
+```
+
+Do not reformat all of `docs/` for Prettier — only edit content that is out of date.
