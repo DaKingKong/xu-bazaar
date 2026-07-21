@@ -1,0 +1,177 @@
+.app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+.app__header {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.app__header h1 {
+  margin: 0;
+  font-size: 2.2rem;
+  letter-spacing: 0.06em;
+  background: linear-gradient(90deg, #7c5cff, #22d3ee);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.app__header p {
+  margin: 0.25rem 0 0;
+  color: #9aa4b2;
+  font-size: 0.95rem;
+}
+
+.scene {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+  border-radius: 16px;
+  background: radial-gradient(circle at 50% 0%, #1c2333, #0d111a);
+  border: 1px solid #263043;
+}
+
+.hero-row {
+  display: flex;
+  justify-content: center;
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 12px;
+  background: #141b29;
+  border: 1px solid #2a3346;
+  min-width: 140px;
+}
+
+.hero--player {
+  border-color: #2f6d5b;
+}
+
+.hero__label {
+  color: #cdd5e0;
+  font-weight: 600;
+}
+
+.hero__stats,
+.minion__stats {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.stat {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.stat--atk {
+  background: #7a2e2e;
+  color: #ffd7d7;
+}
+
+.stat--hp {
+  background: #2e6b3a;
+  color: #d7ffe0;
+}
+
+.board {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  min-height: 120px;
+  padding: 1rem;
+  border-radius: 12px;
+  background: #0b0f18;
+  border: 1px dashed #2a3346;
+  align-items: center;
+  justify-content: center;
+}
+
+.board__empty {
+  color: #6b7688;
+  font-size: 0.9rem;
+}
+
+.minion {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  width: 88px;
+  padding: 0.7rem 0.4rem;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #23304a, #18202f);
+  border: 1px solid #33415c;
+  position: relative;
+}
+
+.minion--taunt {
+  border-color: #b7842b;
+  box-shadow: 0 0 0 2px rgba(183, 132, 43, 0.35);
+}
+
+.minion__name {
+  font-size: 0.8rem;
+  color: #e6ebf2;
+  text-align: center;
+}
+
+.minion__tag {
+  position: absolute;
+  top: -8px;
+  font-size: 0.65rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: #b7842b;
+  color: #1a1206;
+}
+
+.controls {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.controls button {
+  padding: 0.6rem 1.2rem;
+  border-radius: 10px;
+  border: 1px solid #3a4a66;
+  background: #1f2a3d;
+  color: #e6ebf2;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.controls button:hover:not(:disabled) {
+  background: #2a3a55;
+}
+
+.controls button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.app__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 1.25rem;
+  text-align: center;
+  color: #6b7688;
+  font-size: 0.8rem;
+}
