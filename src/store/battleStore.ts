@@ -125,10 +125,17 @@ interface LogEntry {
   text: string;
 }
 
-// 自动战斗中的瞬时动画标记：attacker 突进、target 受击后退。
+// 自动战斗中的瞬时动画标记：attacker 突进、target 受击。
 export interface CombatAnim {
   attacker?: TargetRef;
   target?: TargetRef;
+}
+
+// 受伤飘字：在受击实体上方飘出「-N HP」。id 唯一，动画结束后由 UI 清除。
+export interface FloaterState {
+  id: number;
+  ref: TargetRef;
+  amount: number;
 }
 
 function describe(ev: BattleEvent): string | null {
@@ -157,6 +164,8 @@ interface BattleStoreState {
   log: LogEntry[];
   // 当前正在播放的战斗动画（攻击/反伤）标记；无则为 null。
   anim: CombatAnim | null;
+  // 受伤飘字列表（可同时存在多个）；动画结束后由 UI 通过 clearFloater 清除。
+  floaters: FloaterState[];
   // 玩家正在选择目标/位置的待出牌（UI 用）。
   pending: { cardId: string } | null;
 
@@ -165,12 +174,14 @@ interface BattleStoreState {
   playCard: (action: PlayCardAction) => void;
   reorderMinion: (fromIndex: number, toIndex: number) => void;
   endTurn: () => void;
+  clearFloater: (id: number) => void;
 }
 
 let rng: Rng = makeRng(Date.now() >>> 0);
 let authoritative: BattleState | null = null;
 let queue: BattleEvent[] = [];
 let logSeq = 0;
+let floaterSeq = 0;
 
 export const useBattleStore = create<BattleStoreState>((set, get) => {
   function pump(): void {
@@ -190,9 +201,19 @@ export const useBattleStore = create<BattleStoreState>((set, get) => {
         : ev.type === 'counter'
           ? { target: ev.unit }
           : null;
+    // 事件携带伤害则生成飘字：自动战斗攻击、反伤、疲劳（均为直接扣血的事件）。
+    const damageFloater: FloaterState | null =
+      ev.type === 'attack' && ev.damage > 0
+        ? { id: (floaterSeq += 1), ref: ev.target, amount: ev.damage }
+        : ev.type === 'counter' && ev.damage > 0
+          ? { id: (floaterSeq += 1), ref: ev.unit, amount: ev.damage }
+          : ev.type === 'fatigue' && ev.damage > 0
+            ? { id: (floaterSeq += 1), ref: { kind: 'hero', side: ev.side }, amount: ev.damage }
+            : null;
     set((s) => ({
       view,
       anim,
+      floaters: damageFloater ? [...s.floaters, damageFloater] : s.floaters,
       log: text ? [...s.log.slice(-40), { id: (logSeq += 1), text }] : s.log,
     }));
     const delay = EVENT_DELAY[ev.type] ?? 200;
@@ -211,6 +232,7 @@ export const useBattleStore = create<BattleStoreState>((set, get) => {
     playing: false,
     log: [],
     anim: null,
+    floaters: [],
     pending: null,
 
     newGame: (seed?: number) => {
@@ -226,8 +248,16 @@ export const useBattleStore = create<BattleStoreState>((set, get) => {
       authoritative = initial;
       queue = [];
       logSeq = 0;
+      floaterSeq = 0;
       // 展示初始空场，随后播放第一回合（敌人打牌 + 玩家开始）。
-      set({ view: clone(initial), playing: false, log: [], anim: null, pending: null });
+      set({
+        view: clone(initial),
+        playing: false,
+        log: [],
+        anim: null,
+        floaters: [],
+        pending: null,
+      });
       const res = runEnemyTurn(initial, rng);
       enqueue(res.events, res.state);
     },
@@ -293,5 +323,7 @@ export const useBattleStore = create<BattleStoreState>((set, get) => {
       set({ pending: null });
       enqueue(events, s);
     },
+
+    clearFloater: (id: number) => set((s) => ({ floaters: s.floaters.filter((f) => f.id !== id) })),
   };
 });

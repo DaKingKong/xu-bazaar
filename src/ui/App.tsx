@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { AnimatePresence, Reorder, motion } from 'framer-motion';
 import type { Transition } from 'framer-motion';
 import { useBattleStore } from '../store/battleStore.ts';
-import type { CombatAnim } from '../store/battleStore.ts';
+import type { CombatAnim, FloaterState } from '../store/battleStore.ts';
 import { legalTargets } from '../engine/index.ts';
 import type {
   BattleState,
@@ -42,6 +42,45 @@ const COMBAT_TRANSITION: Transition = {
   times: [0, 0.25, 0.6, 1],
 };
 
+// 角色不参与自动战斗攻击（不进入攻击队列），受击时只做「后退受创」反应，绝不前冲。
+const KNOCKBACK_DISTANCE = 14;
+
+// 受击后退：远离对方（与 towardOpponent 相反）后回位。
+const recoilKeyframes = (side: Side): number[] => {
+  const away = -towardOpponent(side);
+  return [0, away * KNOCKBACK_DISTANCE, 0];
+};
+
+const HIT_TRANSITION: Transition = {
+  duration: 0.32,
+  ease: ['easeOut', 'easeIn'],
+  times: [0, 0.45, 1],
+};
+
+// 飘字：受到伤害时在实体上方飘出「-N HP」。锚定在实体（.frame）内部，随其移动。
+function DamageFloaters({ match }: { match: (f: FloaterState) => boolean }) {
+  const floaters = useBattleStore((s) => s.floaters);
+  const clearFloater = useBattleStore((s) => s.clearFloater);
+  const mine = floaters.filter(match);
+  if (mine.length === 0) return null;
+  return (
+    <span className="damage-floaters" aria-hidden>
+      {mine.map((f) => (
+        <motion.span
+          key={f.id}
+          className="damage-floater"
+          initial={{ opacity: 0, y: 4, scale: 0.7 }}
+          animate={{ opacity: [0, 1, 1, 0], y: -42, scale: 1 }}
+          transition={{ duration: 0.8, times: [0, 0.15, 0.7, 1], ease: 'easeOut' }}
+          onAnimationComplete={() => clearFloater(f.id)}
+        >
+          -{f.amount}HP
+        </motion.span>
+      ))}
+    </span>
+  );
+}
+
 // --- 角色区（含遗物/技能占位；牌库在战场角落，见 scene）---
 function HeroArea({
   view,
@@ -59,9 +98,8 @@ function HeroArea({
   const ps = side === 'player' ? view.player : view.enemy;
   const label = side === 'player' ? '玩家' : '敌人';
   const relics = ps.hero.relics ?? [];
-  const isAttacker = anim?.attacker?.kind === 'hero' && anim.attacker.side === side;
+  // 角色永远不是自动战斗的攻击方（只有仆从会攻击）；仅在受击时做后退受创反应。
   const isHit = anim?.target?.kind === 'hero' && anim.target.side === side;
-  const inCombat = isAttacker || isHit;
   return (
     <div className={`hero-area hero-area--${side}`}>
       {/* 遗物列表（第一版占位）：无遗物则不显示 */}
@@ -78,8 +116,8 @@ function HeroArea({
         className={`hero frame${selectable ? ' frame--selectable' : ''}`}
         disabled={!selectable}
         onClick={() => onSelect({ kind: 'hero', side })}
-        animate={{ y: inCombat ? lungeKeyframes(side) : 0 }}
-        transition={inCombat ? COMBAT_TRANSITION : { duration: 0.2 }}
+        animate={{ y: isHit ? recoilKeyframes(side) : 0 }}
+        transition={isHit ? HIT_TRANSITION : { duration: 0.2 }}
       >
         <span className="hero__label">{label}</span>
         <span className="hero__avatar" aria-hidden />
@@ -87,6 +125,9 @@ function HeroArea({
         <span className="badge badge--hp stat stat--hp">{ps.hero.hp}</span>
         {/* 装备槽（第一版占位）：位于框左边线居中 */}
         <span className="badge badge--equip placeholder" title="装备槽（占位）" aria-hidden />
+        <DamageFloaters
+          match={(f) => f.ref.kind === 'hero' && f.ref.side === side}
+        />
       </motion.button>
 
       {/* 技能按钮（第一版占位） */}
@@ -165,6 +206,9 @@ function MinionView({
       transition={inCombat ? COMBAT_TRANSITION : { type: 'spring', stiffness: 500, damping: 30 }}
     >
       <MinionInner view={view} minion={minion} />
+      <DamageFloaters
+        match={(f) => f.ref.kind === 'minion' && f.ref.side === side && f.ref.id === minion.id}
+      />
     </motion.button>
   );
 }
