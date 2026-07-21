@@ -23,6 +23,9 @@ function chooseTargetMinion(board: Minion[], rng: Rng): Minion {
 }
 
 // 单个仆从的一次攻击结算。
+// 所有攻击均为「双向结算」：攻击方与被攻击方都会受到等同于对方攻击力的伤害。
+// 仆从互打时伤害为「同时结算」——先各自读取对方攻击力，再一并扣血，
+// 因此不会因先手把对方打死而少挨伤害（除非未来引入「先攻」类词条）。
 function resolveMinionAttack(
   state: BattleState,
   attackerSide: Side,
@@ -40,15 +43,30 @@ function resolveMinionAttack(
   const defBoard = sideState(state, defSide).board;
 
   if (defBoard.length > 0) {
-    // 攻击敌方仆从：仅目标受伤（双向结算仅用于打脸，见 §8.4）。
+    // 攻击敌方仆从：双向、同时结算。
     const target = chooseTargetMinion(defBoard, rng);
+    // 先读取两侧攻击力快照，避免任一方先死导致伤害缺失。
+    const attackerDamage = attacker.attack;
+    const targetDamage = target.attack;
+    const targetId = target.id;
+
     events.push({
       type: 'attack',
       attacker: minionRef(attackerSide, attacker.id),
-      target: minionRef(defSide, target.id),
-      damage: attacker.attack,
+      target: minionRef(defSide, targetId),
+      damage: attackerDamage,
     });
-    damageMinion(state, defSide, target.id, attacker.attack, events);
+    // 被攻击方对攻击方的同时反伤。
+    if (targetDamage > 0) {
+      events.push({
+        type: 'counter',
+        unit: minionRef(attackerSide, attacker.id),
+        damage: targetDamage,
+      });
+    }
+    // 同时扣血：两笔伤害都基于攻击前快照。
+    damageMinion(state, defSide, targetId, attackerDamage, events);
+    damageMinion(state, attackerSide, attacker.id, targetDamage, events);
     return;
   }
 
@@ -82,7 +100,7 @@ function resolveSideAttacks(state: BattleState, side: Side, rng: Rng, events: Ba
   }
 }
 
-// 自动战斗阶段：玩家仆从由左至右攻击，随后敌方仆从攻击。
+// 自动战斗阶段：玩家仆从由左至右轮流攻击，随后敌方仆从攻击。
 // 任一角色 HP 归零立即结束（即时判定）。若无胜负，回合数 +1，进入下一回合的敌人打牌阶段。
 export function runAutoBattle(state: BattleState, rng: Rng): BattleResult {
   const s = structuredClone(state);
