@@ -52,6 +52,8 @@ npm run format    # Prettier 格式化
 - **战斗 UI 与动画**：敌我角色区、7 格仆从区、手牌、中线（能量/回合箭头/结束回合）、
   指向选目标 / 插入位置选择，配合 Framer Motion（`layout` + `AnimatePresence`）实现
   召唤插入、重排让位、死亡移除、出牌进出场动画。
+- **战斗日志**：左侧中栏可展开/收起面板（默认展开）；由 `BattleEvent` 播放时追加文案，
+  含卡名/仆从名；自动战斗 `attack`+`counter` 合并为一条交锋记录（见 `docs/battle-log.md`）。
 
 ### 占位（第一版仅 UI，不含逻辑）
 
@@ -77,4 +79,4 @@ runEnemyTurn(state, rng): { state; events };
 引擎为纯函数、确定性：随机性通过可注入的种子化随机源（`makeRng(seed)`）实现，
 `src/engine/rules.test.ts` 以固定种子覆盖 implementation-plan §2 的全部规则。
 
-设计文档：[architecture.md](./docs/architecture.md)、[battle-design.md](./docs/battle-design.md)、[data-model.md](./docs/data-model.md)、[implementation-plan.md](./docs/implementation-plan.md)。
+设计文档：[architecture.md](./docs/architecture.md)、[battle-design.md](./docs/battle-design.md)、[data-model.md](./docs/data-model.md)、[implementation-plan.md](./docs/implementation-plan.md)、[battle-log.md](./docs/battle-log.md)。

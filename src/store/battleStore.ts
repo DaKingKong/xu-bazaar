@@ -17,6 +17,10 @@ import {
   sideState,
 } from '../engine/index.ts';
 import type { BattleEvent, BattleState, PlayCardAction, Rng, TargetRef } from '../engine/types.ts';
+import { LOG_CAP, formatLog } from './formatLog.ts';
+import type { LogEntry } from './formatLog.ts';
+
+export type { LogEntry } from './formatLog.ts';
 
 // 每类事件的播放停顿（毫秒），用于让动画有节奏地推进。
 const EVENT_DELAY: Partial<Record<BattleEvent['type'], number>> = {
@@ -27,8 +31,8 @@ const EVENT_DELAY: Partial<Record<BattleEvent['type'], number>> = {
   fatigue: 400,
   playCard: 260,
   summon: 260,
-  attack: 440,
-  counter: 380,
+  attack: 880,
+  counter: 760,
   death: 260,
   heal: 300,
   gameOver: 200,
@@ -120,11 +124,6 @@ function applyEventToView(view: BattleState, ev: BattleEvent, authoritative: Bat
   }
 }
 
-interface LogEntry {
-  id: number;
-  text: string;
-}
-
 // 自动战斗中的瞬时动画标记：attacker 突进、target 受击。
 export interface CombatAnim {
   attacker?: TargetRef;
@@ -136,26 +135,6 @@ export interface FloaterState {
   id: number;
   ref: TargetRef;
   amount: number;
-}
-
-function describe(ev: BattleEvent): string | null {
-  const who = (s: 'player' | 'enemy') => (s === 'player' ? '玩家' : '敌人');
-  switch (ev.type) {
-    case 'phaseChange':
-      return `阶段：${{ enemyPlay: '敌人打牌', playerPlay: '玩家打牌', autoBattle: '自动战斗', ended: '战斗结束' }[ev.phase]}`;
-    case 'fatigue':
-      return `${who(ev.side)}疲劳：受到 ${ev.damage} 点伤害，获得 ${ev.generatedAttack} 攻直接攻击卡`;
-    case 'attack':
-      return `${ev.attacker.side === 'player' ? '玩家' : '敌人'}仆从攻击，造成 ${ev.damage} 点伤害`;
-    case 'counter':
-      return `反伤 ${ev.damage} 点`;
-    case 'death':
-      return `${who(ev.side)}一个仆从阵亡`;
-    case 'gameOver':
-      return `${who(ev.winner)}获胜！`;
-    default:
-      return null;
-  }
 }
 
 interface BattleStoreState {
@@ -192,9 +171,11 @@ export const useBattleStore = create<BattleStoreState>((set, get) => {
       return;
     }
     const ev = queue.shift()!;
-    const view = clone(get().view!);
+    const nextEv = queue[0];
+    const viewBefore = get().view!;
+    const fields = formatLog(ev, nextEv, viewBefore, authoritative!);
+    const view = clone(viewBefore);
     applyEventToView(view, ev, authoritative!);
-    const text = describe(ev);
     const anim: CombatAnim | null =
       ev.type === 'attack'
         ? { attacker: ev.attacker, target: ev.target }
@@ -214,7 +195,9 @@ export const useBattleStore = create<BattleStoreState>((set, get) => {
       view,
       anim,
       floaters: damageFloater ? [...s.floaters, damageFloater] : s.floaters,
-      log: text ? [...s.log.slice(-40), { id: (logSeq += 1), text }] : s.log,
+      log: fields
+        ? [...s.log.slice(-(LOG_CAP - 1)), { id: (logSeq += 1), ...fields }]
+        : s.log,
     }));
     const delay = EVENT_DELAY[ev.type] ?? 200;
     setTimeout(pump, delay);

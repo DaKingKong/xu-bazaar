@@ -9,7 +9,8 @@
 
 每个里程碑都有明确的完成定义（DoD），须逐一达成后再进入下一阶段。
 
-> **进度（2026-07）**：M1–M7 DoD 均已达成；§6 总验收清单亦已勾选。后续工作见 README「待办」。
+> **进度（2026-07）**：M1–M7 DoD 均已达成；§6 总验收清单亦已勾选。战斗日志（见
+> [battle-log.md](./battle-log.md)）已落地。后续工作见 README「待办」。
 
 ### M1 — 项目骨架与类型 ✅
 - 搭建 Vite + React + TypeScript 项目，配置 Vitest、ESLint/Prettier。

@@ -6,7 +6,8 @@
 
 First-version battle system (M1–M7) is implemented: pure-TS engine (`createBattle` /
 `playCard` / `endTurn` / `runAutoBattle` / `runEnemyTurn`), Zustand store bridge with
-event playback, and a playable battle UI with Framer Motion. Equipment / relics / skills /
+event playback, a playable battle UI with Framer Motion, and a left-side battle log
+(`formatLog` from `BattleEvent`, collapsible panel). Equipment / relics / skills /
 field-effect slots are UI placeholders only. Meta systems (growth, unlocks, deckbuilding)
 are out of scope for v1 — see `README.md` and `docs/implementation-plan.md`.
 

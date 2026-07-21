@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, Reorder, motion } from 'framer-motion';
 import type { Transition } from 'framer-motion';
 import { useBattleStore } from '../store/battleStore.ts';
-import type { CombatAnim, FloaterState } from '../store/battleStore.ts';
+import type { CombatAnim, FloaterState, LogEntry } from '../store/battleStore.ts';
 import { legalTargets } from '../engine/index.ts';
 import type {
   BattleState,
@@ -14,6 +14,64 @@ import type {
 } from '../engine/types.ts';
 import { MAX_ENERGY } from '../engine/types.ts';
 import './App.css';
+
+
+// --- 战斗日志（左侧中栏，可展开/收起；见 docs/battle-log.md）---
+function BattleLogPanel({ log }: { log: LogEntry[] }) {
+  const [expanded, setExpanded] = useState(true);
+  const listRef = useRef<HTMLDivElement>(null);
+  const latestId = log.length > 0 ? log[log.length - 1]!.id : null;
+
+  useEffect(() => {
+    if (!expanded) return;
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [log, expanded]);
+
+  return (
+    <aside
+      className={`battle-log${expanded ? '' : ' battle-log--collapsed'}`}
+      aria-label="战斗日志"
+    >
+      <button
+        type="button"
+        className="battle-log__toggle"
+        aria-expanded={expanded}
+        aria-controls="battle-log-list"
+        aria-label={expanded ? '收起战斗日志' : '展开战斗日志'}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        {expanded ? '‹' : '›'}
+        {!expanded && <span className="battle-log__toggle-label">日志</span>}
+      </button>
+      <div
+        id="battle-log-list"
+        ref={listRef}
+        className="battle-log__list"
+        hidden={!expanded}
+        aria-live="polite"
+        aria-relevant="additions"
+      >
+        {log.length === 0 && <div className="battle-log__empty">尚无记录</div>}
+        {log.map((e) => (
+          <div
+            key={e.id}
+            className={[
+              'battle-log__entry',
+              `battle-log__entry--${e.kind}`,
+              e.side ? `battle-log__entry--${e.side}` : '',
+              e.id === latestId ? 'battle-log__entry--latest' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          >
+            {e.text}
+          </div>
+        ))}
+      </div>
+    </aside>
+  );
+}
 
 function targetsEqual(a: TargetRef, b: TargetRef): boolean {
   if (a.kind !== b.kind || a.side !== b.side) return false;
@@ -36,7 +94,7 @@ const lungeKeyframes = (side: Side): number[] => {
 };
 
 const COMBAT_TRANSITION: Transition = {
-  duration: 0.4,
+  duration: 0.8,
   // 突进峰值约在 60% 处，与 store 事件触发即扣血的时机大致对齐（视觉上突进即命中）。
   ease: ['easeOut', 'easeIn', 'easeIn'],
   times: [0, 0.25, 0.6, 1],
@@ -46,7 +104,7 @@ const COMBAT_TRANSITION: Transition = {
 const HERO_HIT_SCALE = [1, 1.2, 1];
 
 const HIT_TRANSITION: Transition = {
-  duration: 0.32,
+  duration: 0.64,
   ease: ['easeOut', 'easeIn'],
   times: [0, 0.45, 1],
 };
@@ -65,7 +123,7 @@ function DamageFloaters({ match }: { match: (f: FloaterState) => boolean }) {
           className="damage-floater"
           initial={{ opacity: 0, y: 4, scale: 0.7 }}
           animate={{ opacity: [0, 1, 1, 0], y: -42, scale: 1 }}
-          transition={{ duration: 0.8, times: [0, 0.15, 0.7, 1], ease: 'easeOut' }}
+          transition={{ duration: 1.6, times: [0, 0.15, 0.7, 1], ease: 'easeOut' }}
           onAnimationComplete={() => clearFloater(f.id)}
         >
           -{f.amount}HP
@@ -469,7 +527,10 @@ function App() {
         <p>轻量化 PVE 卡牌对战 · 回合 {view.turn}</p>
       </header>
 
-      <main className="scene">
+      <div className="app__body">
+        <BattleLogPanel log={log} />
+
+        <main className="scene">
         {/* 牌库：敌人在左上角，玩家在右下角 */}
         <div className="deck deck--enemy" title="敌人牌库剩余">
           <span className="deck__count">{view.enemy.deck.length}</span>
@@ -568,7 +629,8 @@ function App() {
           </AnimatePresence>
           {view.player.hand.length === 0 && <span className="board__empty">（无手牌）</span>}
         </section>
-      </main>
+        </main>
+      </div>
 
       {(isPlacing || isTargeting) && (
         <div className="hint">
@@ -582,14 +644,6 @@ function App() {
       {canReorder && (
         <div className="hint hint--reorder">拖拽可重排你的仆从位置</div>
       )}
-
-      <aside className="log" aria-label="战斗日志">
-        {log.map((e) => (
-          <div key={e.id} className="log__entry">
-            {e.text}
-          </div>
-        ))}
-      </aside>
 
       <AnimatePresence>
         {view.winner && (
