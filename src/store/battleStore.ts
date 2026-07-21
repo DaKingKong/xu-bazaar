@@ -163,6 +163,7 @@ interface BattleStoreState {
   newGame: (seed?: number) => void;
   setPending: (cardId: string | null) => void;
   playCard: (action: PlayCardAction) => void;
+  reorderMinion: (fromIndex: number, toIndex: number) => void;
   endTurn: () => void;
 }
 
@@ -243,6 +244,30 @@ export const useBattleStore = create<BattleStoreState>((set, get) => {
       } catch {
         set({ pending: null });
       }
+    },
+
+    // 玩家阶段拖拽重排己方仆从：仅改变 board 顺序，不结算、不耗能。
+    // 纯排序不产生战斗事件，直接同步更新权威状态与展示状态，
+    // 自动战斗（由左至右）随即读取拖拽后的新顺序。
+    reorderMinion: (fromIndex: number, toIndex: number) => {
+      const { playing } = get();
+      if (playing || !authoritative || authoritative.phase !== 'playerPlay') return;
+      const board = authoritative.player.board;
+      if (
+        fromIndex < 0 ||
+        fromIndex >= board.length ||
+        toIndex < 0 ||
+        toIndex >= board.length ||
+        fromIndex === toIndex
+      ) {
+        return;
+      }
+      const next = clone(authoritative);
+      const arr = next.player.board;
+      const [moved] = arr.splice(fromIndex, 1);
+      arr.splice(toIndex, 0, moved);
+      authoritative = next;
+      set({ view: clone(next) });
     },
 
     endTurn: () => {
