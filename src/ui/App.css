@@ -103,6 +103,30 @@
   position: relative;
 }
 
+/* 受伤飘字：从实体中心上方飘出并淡出，不拦截点击 */
+.damage-floaters {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  pointer-events: none;
+}
+
+.damage-floater {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: #ff5a5a;
+  text-shadow:
+    0 1px 0 #1a0000,
+    0 0 6px rgba(255, 60, 60, 0.6);
+}
+
 .badge {
   position: absolute;
   z-index: 3;
