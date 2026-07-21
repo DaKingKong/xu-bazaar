@@ -21,14 +21,25 @@ function targetsEqual(a: TargetRef, b: TargetRef): boolean {
   return true;
 }
 
-// 命中动画：攻击方朝对方突进（再回位）；受击方缩小再放大回原尺寸。
-const lungeY = (side: Side) => (side === 'player' ? -34 : 34);
-const HIT_SCALE = [1, 0.82, 1];
+// 命中动画：攻击方与受击方共用同一套「后退蓄力 → 朝对方突进 → 回位」位移。
+// 双方各按自己所在 side 决定方向（玩家在下朝上，敌人在上朝下），天然对冲相撞。
+const LUNGE_DISTANCE = 34;
+const RETREAT_DISTANCE = 12;
+
+// 朝对方的方向：玩家在下 → 负 y（向上冲）；敌人在上 → 正 y（向下冲）。
+const towardOpponent = (side: Side): number => (side === 'player' ? -1 : 1);
+
+// 关键帧：[静止, 后退蓄力, 突进到位, 回位]；后退与突进方向相反，突进朝对方。
+const lungeKeyframes = (side: Side): number[] => {
+  const dir = towardOpponent(side);
+  return [0, -dir * RETREAT_DISTANCE, dir * LUNGE_DISTANCE, 0];
+};
 
 const COMBAT_TRANSITION: Transition = {
   duration: 0.4,
-  ease: ['easeOut', 'easeIn'],
-  times: [0, 0.45, 1],
+  // 突进峰值约在 60% 处，与 store 事件触发即扣血的时机大致对齐（视觉上突进即命中）。
+  ease: ['easeOut', 'easeIn', 'easeIn'],
+  times: [0, 0.25, 0.6, 1],
 };
 
 // --- 角色区（含遗物/技能占位；牌库在战场角落，见 scene）---
@@ -48,7 +59,9 @@ function HeroArea({
   const ps = side === 'player' ? view.player : view.enemy;
   const label = side === 'player' ? '玩家' : '敌人';
   const relics = ps.hero.relics ?? [];
+  const isAttacker = anim?.attacker?.kind === 'hero' && anim.attacker.side === side;
   const isHit = anim?.target?.kind === 'hero' && anim.target.side === side;
+  const inCombat = isAttacker || isHit;
   return (
     <div className={`hero-area hero-area--${side}`}>
       {/* 遗物列表（第一版占位）：无遗物则不显示 */}
@@ -65,8 +78,8 @@ function HeroArea({
         className={`hero frame${selectable ? ' frame--selectable' : ''}`}
         disabled={!selectable}
         onClick={() => onSelect({ kind: 'hero', side })}
-        animate={{ scale: isHit ? HIT_SCALE : 1 }}
-        transition={isHit ? COMBAT_TRANSITION : { duration: 0.2 }}
+        animate={{ y: inCombat ? lungeKeyframes(side) : 0 }}
+        transition={inCombat ? COMBAT_TRANSITION : { duration: 0.2 }}
       >
         <span className="hero__label">{label}</span>
         <span className="hero__avatar" aria-hidden />
@@ -144,8 +157,9 @@ function MinionView({
       initial={{ opacity: 0, scale: 0.6, y: side === 'enemy' ? -20 : 20 }}
       animate={{
         opacity: 1,
-        scale: isTarget ? HIT_SCALE : 1,
-        y: isAttacker ? [0, lungeY(side), 0] : 0,
+        scale: 1,
+        // 攻击方与受击方共用同款位移，各按自己 side 朝对方突进，天然对冲。
+        y: inCombat ? lungeKeyframes(side) : 0,
       }}
       exit={{ opacity: 0, scale: 0.4, y: side === 'enemy' ? -20 : 20 }}
       transition={inCombat ? COMBAT_TRANSITION : { type: 'spring', stiffness: 500, damping: 30 }}
