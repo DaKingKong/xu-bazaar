@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { useEffect, useState } from 'react';
+import { AnimatePresence, Reorder, motion } from 'framer-motion';
 import type { Transition } from 'framer-motion';
 import { useBattleStore } from '../store/battleStore.ts';
 import type { CombatAnim } from '../store/battleStore.ts';
@@ -84,7 +84,34 @@ function HeroArea({
   );
 }
 
-// --- 单个仆从 ---
+// 仆从内容（立绘/属性/关键字），供普通与可拖拽两种容器复用。
+function MinionInner({ view, minion }: { view: BattleState; minion: Minion }) {
+  const def = view.cardDb[minion.defId];
+  return (
+    <>
+      <span className="minion__name">{def?.name ?? minion.defId}</span>
+      <span className="badge badge--atk stat stat--atk">{minion.attack}</span>
+      <span className="badge badge--hp stat stat--hp">{minion.hp}</span>
+      {minion.keywords.includes('taunt') && <span className="badge badge--taunt">嗤讻</span>}
+    </>
+  );
+}
+
+function minionClass(minion: Minion, extra: Record<string, boolean>): string {
+  return [
+    'minion',
+    'frame',
+    minion.size === 2 ? 'minion--large' : '',
+    minion.keywords.includes('taunt') ? 'minion--taunt' : '',
+    ...Object.entries(extra)
+      .filter(([, on]) => on)
+      .map(([cls]) => cls),
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+// --- 单个仆从（非拖拽态：用于敌方仆从、选目标/自动战斗展示）---
 function MinionView({
   view,
   minion,
@@ -100,7 +127,6 @@ function MinionView({
   anim: CombatAnim | null;
   onSelect: (ref: TargetRef) => void;
 }) {
-  const def = view.cardDb[minion.defId];
   const isAttacker =
     anim?.attacker?.kind === 'minion' &&
     anim.attacker.side === side &&
@@ -114,15 +140,7 @@ function MinionView({
       layout
       disabled={!selectable}
       onClick={() => onSelect({ kind: 'minion', side, id: minion.id })}
-      className={[
-        'minion',
-        'frame',
-        minion.size === 2 ? 'minion--large' : '',
-        minion.keywords.includes('taunt') ? 'minion--taunt' : '',
-        selectable ? 'frame--selectable' : '',
-      ]
-        .filter(Boolean)
-        .join(' ')}
+      className={minionClass(minion, { 'frame--selectable': selectable })}
       initial={{ opacity: 0, scale: 0.6, y: side === 'enemy' ? -20 : 20 }}
       animate={{
         opacity: 1,
@@ -132,11 +150,26 @@ function MinionView({
       exit={{ opacity: 0, scale: 0.4, y: side === 'enemy' ? -20 : 20 }}
       transition={inCombat ? COMBAT_TRANSITION : { type: 'spring', stiffness: 500, damping: 30 }}
     >
-      <span className="minion__name">{def?.name ?? minion.defId}</span>
-      <span className="badge badge--atk stat stat--atk">{minion.attack}</span>
-      <span className="badge badge--hp stat stat--hp">{minion.hp}</span>
-      {minion.keywords.includes('taunt') && <span className="badge badge--taunt">嘲讽</span>}
+      <MinionInner view={view} minion={minion} />
     </motion.button>
+  );
+}
+
+// --- 可拖拽的玩家仆从（玩家阶段重排）---
+function DraggableMinion({ view, minion }: { view: BattleState; minion: Minion }) {
+  return (
+    <Reorder.Item
+      value={minion}
+      layout
+      className={minionClass(minion, { 'minion--draggable': true })}
+      initial={{ opacity: 0, scale: 0.6, y: 20 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.4, y: 20 }}
+      whileDrag={{ scale: 1.08, zIndex: 5 }}
+      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+    >
+      <MinionInner view={view} minion={minion} />
+    </Reorder.Item>
   );
 }
 
@@ -208,6 +241,43 @@ function EnergyPips({ energy }: { energy: number }) {
   );
 }
 
+// --- 玩家仆从区（可拖拽重排）---
+// 为了拖拽时流畅，Reorder.Group 使用本地受控顺序，拖拽结束后才将新顺序同步到 store。
+function PlayerReorderBoard({
+  view,
+  onCommit,
+}: {
+  view: BattleState;
+  onCommit: (orderedIds: string[]) => void;
+}) {
+  const board = view.player.board;
+  const [order, setOrder] = useState<Minion[]>(board);
+
+  // 当权威 board 变化（只要 id 集合/顺序变了）时，重新同步本地顺序。
+  const boardKey = board.map((m) => m.id).join(',');
+  useEffect(() => {
+    setOrder(board);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardKey]);
+
+  return (
+    <Reorder.Group
+      as="div"
+      axis="x"
+      values={order}
+      onReorder={setOrder}
+      className="board__reorder"
+      onPointerUp={() => onCommit(order.map((m) => m.id))}
+    >
+      <AnimatePresence>
+        {order.map((m) => (
+          <DraggableMinion key={m.id} view={view} minion={m} />
+        ))}
+      </AnimatePresence>
+    </Reorder.Group>
+  );
+}
+
 function App() {
   const view = useBattleStore((s) => s.view);
   const playing = useBattleStore((s) => s.playing);
@@ -217,6 +287,7 @@ function App() {
   const newGame = useBattleStore((s) => s.newGame);
   const setPending = useBattleStore((s) => s.setPending);
   const playCard = useBattleStore((s) => s.playCard);
+  const reorderMinion = useBattleStore((s) => s.reorderMinion);
   const endTurn = useBattleStore((s) => s.endTurn);
 
   useEffect(() => {
@@ -230,6 +301,8 @@ function App() {
   const pendingDef: CardDef | null = pendingCard ? view.cardDb[pendingCard.defId] : null;
   const isPlacing = isPlayerTurn && pendingDef?.type === 'minion';
   const isTargeting = isPlayerTurn && !!pendingDef?.targeting?.needsTarget;
+  // 只有玩家回合、且未处于选目标/放置、且场上有仆从时，才开启拖拽重排。
+  const canReorder = isPlayerTurn && !isTargeting && !isPlacing && view.player.board.length > 1;
   const legal: TargetRef[] =
     isTargeting && pendingDef ? legalTargets(view, 'player', pendingDef) : [];
 
@@ -266,6 +339,26 @@ function App() {
     playCard({ cardId: pendingCard.id, position: index });
   };
 
+  // 拖拽结束：将新顺序与权威 board 对比，找出第一个变动位置并提交 reorderMinion。
+  const onReorderCommit = (orderedIds: string[]) => {
+    const currentIds = view.player.board.map((m) => m.id);
+    if (orderedIds.length !== currentIds.length) return;
+    if (orderedIds.every((id, i) => id === currentIds[i])) return; // 无变化
+    // 找到第一个不同位置：被移动的卡为 orderedIds 在该位置的元素。
+    let from = -1;
+    let to = -1;
+    for (let i = 0; i < currentIds.length; i += 1) {
+      if (currentIds[i] !== orderedIds[i]) {
+        to = i;
+        from = currentIds.indexOf(orderedIds[i]);
+        break;
+      }
+    }
+    if (from >= 0 && to >= 0 && from !== to) {
+      reorderMinion(from, to);
+    }
+  };
+
   const phaseText =
     view.phase === 'enemyPlay'
       ? '敌人打牌'
@@ -275,7 +368,8 @@ function App() {
           ? '自动战斗'
           : '战斗结束';
 
-  const renderPlayerBoard = () => {
+  // 选目标/放置阶段：渲染可点击仆从 + 插入槽。
+  const renderPlayerBoardSelectable = () => {
     const board = view.player.board;
     const slots: React.ReactNode[] = [];
     if (isPlacing) {
@@ -389,7 +483,11 @@ function App() {
         </div>
 
         <section className="board board--player" aria-label="玩家仆从区">
-          <AnimatePresence>{renderPlayerBoard()}</AnimatePresence>
+          {canReorder ? (
+            <PlayerReorderBoard view={view} onCommit={onReorderCommit} />
+          ) : (
+            <AnimatePresence>{renderPlayerBoardSelectable()}</AnimatePresence>
+          )}
           {view.player.board.length === 0 && !isPlacing && (
             <span className="board__empty">（无仆从）</span>
           )}
@@ -427,6 +525,10 @@ function App() {
             取消
           </button>
         </div>
+      )}
+
+      {canReorder && (
+        <div className="hint hint--reorder">拖拽可重排你的仆从位置</div>
       )}
 
       <aside className="log" aria-label="战斗日志">
