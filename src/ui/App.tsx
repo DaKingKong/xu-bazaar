@@ -42,14 +42,8 @@ const COMBAT_TRANSITION: Transition = {
   times: [0, 0.25, 0.6, 1],
 };
 
-// 角色不参与自动战斗攻击（不进入攻击队列），受击时只做「后退受创」反应，绝不前冲。
-const KNOCKBACK_DISTANCE = 14;
-
-// 受击后退：远离对方（与 towardOpponent 相反）后回位。
-const recoilKeyframes = (side: Side): number[] => {
-  const away = -towardOpponent(side);
-  return [0, away * KNOCKBACK_DISTANCE, 0];
-};
+// 角色不参与自动战斗攻击（不进入攻击队列），受击时只做「放大再缩小回位」反应，绝不前冲。
+const HERO_HIT_SCALE = [1, 1.2, 1];
 
 const HIT_TRANSITION: Transition = {
   duration: 0.32,
@@ -116,7 +110,7 @@ function HeroArea({
         className={`hero frame${selectable ? ' frame--selectable' : ''}`}
         disabled={!selectable}
         onClick={() => onSelect({ kind: 'hero', side })}
-        animate={{ y: isHit ? recoilKeyframes(side) : 0 }}
+        animate={{ scale: isHit ? HERO_HIT_SCALE : 1 }}
         transition={isHit ? HIT_TRANSITION : { duration: 0.2 }}
       >
         <span className="hero__label">{label}</span>
