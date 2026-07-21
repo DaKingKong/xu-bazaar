@@ -64,10 +64,19 @@ function resolveDamage(instance: CardInstance, def: CardDef): number {
   return instance.overrideDamage ?? def.damage ?? 0;
 }
 
+// 读取某目标的攻击力（用于直接攻击卡的双向反伤）。目标不存在则为 0。
+function targetAttack(state: BattleState, target: TargetRef): number {
+  const ps = sideState(state, target.side);
+  if (target.kind === 'hero') return ps.hero.attack;
+  const m = ps.board.find((x) => x.id === target.id);
+  return m ? m.attack : 0;
+}
+
 function applyEffectToTarget(
   state: BattleState,
   def: CardDef,
   instance: CardInstance,
+  actingSide: Side,
   target: TargetRef,
   events: BattleEvent[],
 ): void {
@@ -84,10 +93,22 @@ function applyEffectToTarget(
   }
 
   const dmg = resolveDamage(instance, def);
+
+  // 直接攻击卡（type: 'attack'）由角色发起，伤害「双向结算」：
+  // 除对目标造成伤害外，发起方角色也受到等于目标攻击力的反伤。
+  // 法术卡（type: 'spell'）为无反伤的远程效果，不触发双向结算。
+  const bidirectional = def.type === 'attack';
+  const counter = bidirectional ? targetAttack(state, target) : 0;
+
   if (target.kind === 'hero') {
     damageHero(state, target.side, dmg, events);
   } else {
     damageMinion(state, target.side, target.id, dmg, events);
+  }
+
+  if (counter > 0 && !isEnded(state)) {
+    events.push({ type: 'counter', unit: { kind: 'hero', side: actingSide }, damage: counter });
+    damageHero(state, actingSide, counter, events);
   }
 }
 
@@ -161,7 +182,7 @@ export function playCard(state: BattleState, action: PlayCardAction, _rng?: unkn
   if (def.type === 'minion') {
     summonMinion(s, side, def, instance, action.position, events);
   } else {
-    applyEffectToTarget(s, def, instance, action.target!, events);
+    applyEffectToTarget(s, def, instance, side, action.target!, events);
   }
 
   return { state: s, events };
