@@ -9,14 +9,14 @@ import { FIRST_TURN_DRAW, MAX_ENERGY, MAX_HAND_SIZE, PER_TURN_DRAW } from './typ
 // 单次抽牌（就地修改状态）。规则：
 // - 卡组非空且手牌未满：从顶部抽 1 张进手牌，推 draw 事件。
 // - 卡组非空但手牌已满（10）：跳过该次抽牌，卡组不变，推 drawSkipped 事件。
-// - 卡组已空：触发疲劳——角色受伤（每次递增 2）+ 生成 1 张攻击力递增的直接攻击卡。
+// - 卡组已空：触发疲劳——角色固定受 2 伤 + 生成 1 张攻击力递增的直接攻击卡。
 export function drawOne(state: BattleState, side: Side, events: BattleEvent[]): void {
   if (isEnded(state)) return;
   const ps = sideState(state, side);
 
   if (ps.deck.length === 0) {
     ps.fatigueCount += 1;
-    const damage = ps.fatigueCount * 2;
+    const damage = 2;
     const generatedAttack = ps.fatigueCount;
     events.push({ type: 'fatigue', side, damage, generatedAttack });
     if (ps.hand.length < MAX_HAND_SIZE) {

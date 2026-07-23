@@ -135,13 +135,13 @@ describe('M2 抽牌/能量/疲劳', () => {
     expect(events.filter((e) => e.type === 'drawSkipped')).toHaveLength(1);
   });
 
-  it('疲劳递增：伤害 2/4/6，生成攻击卡攻击力 1/2/3', () => {
+  it('疲劳：伤害固定 2，生成攻击卡攻击力仍递增 1/2/3', () => {
     const s = mkState({ player: mkPlayer('player', { deck: [], heroHp: 30 }) });
     const events: BattleEvent[] = [];
     drawOne(s, 'player', events);
     drawOne(s, 'player', events);
     drawOne(s, 'player', events);
-    expect(s.player.hero.hp).toBe(30 - (2 + 4 + 6));
+    expect(s.player.hero.hp).toBe(30 - 2 * 3);
     expect(s.player.fatigueCount).toBe(3);
     const generated = s.player.hand.filter((c) => c.defId === FATIGUE_STRIKE_DEF_ID);
     expect(generated.map((c) => c.overrideDamage)).toEqual([1, 2, 3]);
@@ -377,7 +377,7 @@ describe('M4 敌人 AI 组合搜索', () => {
   });
 
   it('无可打出的卡返回空组合', () => {
-    const hand: CardInstance[] = [{ id: 'c1', defId: 'spell-demon-portal' }]; // 4
+    const hand: CardInstance[] = [{ id: 'c1', defId: 'spell-demon-portal' }]; // 3
     const combo = chooseCombo(hand, CARD_DB, 1, makeRng(1));
     expect(combo).toHaveLength(0);
   });

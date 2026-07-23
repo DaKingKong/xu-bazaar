@@ -317,7 +317,7 @@ describe('catalog-deck-v1', () => {
     expect(st.player.discard.some((c) => c.id === 'old-ag')).toBe(true);
   });
 
-  it('诅咒爆破：AOE 后本回合敌方仆从双倍受伤', () => {
+  it('诅咒爆破：先 debuff 再 AOE，本回合敌方仆从双倍受伤', () => {
     const s = mkState({
       player: mkPlayer('player', {
         hand: [
@@ -331,13 +331,15 @@ describe('catalog-deck-v1', () => {
       }),
     });
     let st = playCard(s, { cardId: 'cb' }).state;
-    expect(st.enemy.board[0]!.hp).toBe(18);
+    // 先 debuff 再 AOE：仆从 2×2=4，英雄不受倍率仍为 2
+    expect(st.enemy.board[0]!.hp).toBe(16);
     expect(st.enemy.hero.hp).toBe(28);
     st = playCard(st, {
       cardId: 'fb',
       target: { kind: 'minion', side: 'enemy', id: 'e1' },
     }).state;
-    expect(st.enemy.board[0]!.hp).toBe(2);
+    // 火球 8×2=16，击杀（原 20−4−16）
+    expect(st.enemy.board.some((m) => m.id === 'e1')).toBe(false);
   });
 
   it('主题组与 AI 能跑完敌人回合', () => {
