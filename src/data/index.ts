@@ -121,8 +121,8 @@ export const CARD_DEFS: CardDef[] = [
     description: '恶魔传送门的召唤物。',
     minion: {
       name: '小恶魔',
-      attack: 1,
-      hp: 2,
+      attack: 2,
+      hp: 1,
       size: 1,
       keywords: [],
       tags: ['hell'],
@@ -136,8 +136,8 @@ export const CARD_DEFS: CardDef[] = [
     description: '恶魔的召唤物。',
     minion: {
       name: '小恶魔',
-      attack: 1,
-      hp: 2,
+      attack: 2,
+      hp: 1,
       size: 1,
       keywords: [],
       tags: ['hell'],
