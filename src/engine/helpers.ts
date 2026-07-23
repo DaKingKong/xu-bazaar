@@ -8,10 +8,11 @@ import type {
   Minion,
   MinionTag,
   PlayerState,
-  RitualEffect,
+  RitualKey,
   Side,
   TargetRef,
 } from './types.ts';
+import { RITUAL_DEFS } from './types.ts';
 
 export function otherSide(side: Side): Side {
   return side === 'player' ? 'enemy' : 'player';
@@ -19,6 +20,15 @@ export function otherSide(side: Side): Side {
 
 export function sideState(state: BattleState, side: Side): PlayerState {
   return side === 'player' ? state.player : state.enemy;
+}
+
+export function isRitual(m: Minion): boolean {
+  return m.ritual != null;
+}
+
+/** 参战仆从（排除仪式占位）。 */
+export function combatMinions(board: Minion[]): Minion[] {
+  return board.filter((m) => !isRitual(m));
 }
 
 export function boardUsage(board: Minion[]): number {
@@ -38,7 +48,7 @@ export function minionRef(side: Side, id: string): TargetRef {
 }
 
 export function tauntsOf(board: Minion[]): Minion[] {
-  return board.filter((m) => m.keywords.includes('taunt'));
+  return combatMinions(board).filter((m) => m.keywords.includes('taunt'));
 }
 
 export function hasTag(m: Minion, tag: MinionTag): boolean {
@@ -68,12 +78,12 @@ export function pushDiscard(
   events.push({ type: 'discard', side, cardId: card.id });
 }
 
-const RITUAL_THRESHOLDS: Record<RitualEffect['ritualKey'], number> = {
-  demonPortal: 5,
-  hellBeast: 7,
+export const RITUAL_THRESHOLDS: Record<RitualKey, number> = {
+  demonPortal: RITUAL_DEFS.demonPortal.threshold,
+  hellBeast: RITUAL_DEFS.hellBeast.threshold,
 };
 
-/** 友方仆从真正死亡（非重生）后：进弃牌、推进仪式。 */
+/** 仆从真正死亡（非重生）后：进弃牌、推进仪式。 */
 export function onMinionRemoved(
   state: BattleState,
   side: Side,
@@ -86,27 +96,40 @@ export function onMinionRemoved(
     { id: nextId(state, `gy-${side}`), defId: minion.defId },
     events,
   );
-  notifyRitualsOnFriendlyDeath(state, side, events);
+  notifyRitualsOnMinionDeath(state, side, events);
 }
 
-function notifyRitualsOnFriendlyDeath(
+/**
+ * 死亡侧为 `deathSide`。
+ * - 恶魔传送门：任意仆从死亡都 +1（双方各自的传送门都计）
+ * - 地狱兽仪式：仅死亡侧友方仪式 +1，并回复该侧领主 +2
+ */
+function notifyRitualsOnMinionDeath(
   state: BattleState,
-  side: Side,
+  deathSide: Side,
   events: BattleEvent[],
 ): void {
-  const ps = sideState(state, side);
-  for (const ritual of ps.rituals) {
-    ritual.sacrifice += 1;
-    if (ritual.ritualKey === 'hellBeast') {
-      ps.hero.hp = Math.min(ps.hero.maxHp, ps.hero.hp + 2);
-      events.push({ type: 'heal', target: heroRef(side), amount: 2 });
+  for (const owner of ['player', 'enemy'] as Side[]) {
+    const ps = sideState(state, owner);
+    for (const unit of ps.board) {
+      if (!unit.ritual) continue;
+      const key = unit.ritual.ritualKey;
+      if (key === 'hellBeast' && owner !== deathSide) continue;
+      if (key !== 'demonPortal' && key !== 'hellBeast') continue;
+
+      unit.ritual.sacrifice += 1;
+      if (key === 'hellBeast') {
+        ps.hero.hp = Math.min(ps.hero.maxHp, ps.hero.hp + 2);
+        events.push({ type: 'heal', target: heroRef(owner), amount: 2 });
+      }
+      events.push({
+        type: 'ritualUpdate',
+        side: owner,
+        ritualId: unit.id,
+        sacrifice: unit.ritual.sacrifice,
+        hp: unit.hp,
+      });
     }
-    events.push({
-      type: 'ritualUpdate',
-      side,
-      ritualId: ritual.id,
-      sacrifice: ritual.sacrifice,
-    });
   }
 }
 
@@ -117,7 +140,7 @@ function notifyRitualsOnFriendlyDeath(
 export type RitualSummonHook = (
   state: BattleState,
   side: Side,
-  ritual: RitualEffect,
+  ritual: Minion,
   events: BattleEvent[],
 ) => void;
 
@@ -133,17 +156,36 @@ export function checkRitualThresholds(
   events: BattleEvent[],
 ): void {
   const ps = sideState(state, side);
-  for (const ritual of ps.rituals) {
-    const need = RITUAL_THRESHOLDS[ritual.ritualKey];
-    while (ritual.sacrifice >= need) {
-      ritual.sacrifice -= need;
+  const ritualIds = ps.board.filter(isRitual).map((m) => m.id);
+  for (const id of ritualIds) {
+    const unit = ps.board.find((m) => m.id === id);
+    if (!unit?.ritual) continue;
+    const need = RITUAL_THRESHOLDS[unit.ritual.ritualKey];
+    while (unit.ritual.sacrifice >= need) {
+      unit.ritual.sacrifice -= need;
+      ritualSummonHook?.(state, side, unit, events);
+      unit.hp -= 1;
       events.push({
         type: 'ritualUpdate',
         side,
-        ritualId: ritual.id,
-        sacrifice: ritual.sacrifice,
+        ritualId: unit.id,
+        sacrifice: unit.ritual.sacrifice,
+        hp: unit.hp,
       });
-      ritualSummonHook?.(state, side, ritual, events);
+      if (unit.hp <= 0) {
+        const idx = ps.board.findIndex((m) => m.id === id);
+        if (idx >= 0) {
+          const dead = ps.board.splice(idx, 1)[0]!;
+          events.push({ type: 'death', side, minionId: dead.id });
+          pushDiscard(
+            state,
+            side,
+            { id: nextId(state, `gy-${side}`), defId: dead.defId },
+            events,
+          );
+        }
+        break;
+      }
     }
   }
 }
@@ -180,6 +222,7 @@ function applyShieldThenHp(minion: Minion, amount: number): number {
 
 /**
  * 对仆从造成伤害；护盾优先；重生可阻止移除。
+ * 仪式占位免疫伤害。
  * 返回：未命中/无伤害 → false；真正击杀移除 → true；命中但存活或重生 → false。
  * 若发生重生，opts.outReborn?.value 会设为 true。
  */
@@ -198,7 +241,8 @@ export function damageMinion(
   const ps = sideState(state, side);
   const idx = ps.board.findIndex((m) => m.id === minionId);
   if (idx < 0) return false;
-  const minion = ps.board[idx];
+  const minion = ps.board[idx]!;
+  if (isRitual(minion)) return false;
   const dmg = computeIncomingDamage(state, side, minion, amount);
   if (dmg <= 0) return false;
 
@@ -219,10 +263,12 @@ export function damageMinion(
     return false;
   }
 
-  const dead = ps.board.splice(idx, 1)[0];
+  const dead = ps.board.splice(idx, 1)[0]!;
   events.push({ type: 'death', side, minionId });
   onMinionRemoved(state, side, dead, events);
-  checkRitualThresholds(state, side, events);
+  // 传送门可能在非死亡侧也推进，两侧都要检查达标
+  checkRitualThresholds(state, 'player', events);
+  checkRitualThresholds(state, 'enemy', events);
   return true;
 }
 
@@ -235,7 +281,7 @@ export function maybeLifesteal(
 ): void {
   if ((state.hell?.intensity ?? 0) <= 0) return;
   const m = sideState(state, side).board.find((x) => x.id === minionId);
-  if (!m) return;
+  if (!m || isRitual(m)) return;
   const def = state.cardDb[m.defId];
   // 仅凯斯提带「若场地为地狱，吸血 5」——用 defId 识别
   if (def?.defId !== 'token-kest') return;
@@ -276,18 +322,19 @@ export function clearEndOfRoundEffects(state: BattleState): void {
     const ps = sideState(state, side);
     ps.incomingDamageMultiplier = undefined;
     for (const m of ps.board) {
+      if (isRitual(m)) continue;
       m.shield = 0;
     }
   }
 }
 
-/** 地狱回合伤害：对所有非地狱 TAG 仆从。 */
+/** 地狱回合伤害：对所有非地狱 TAG 仆从（跳过仪式）。 */
 export function resolveHellTick(state: BattleState, events: BattleEvent[]): void {
   const intensity = state.hell?.intensity ?? 0;
   if (intensity <= 0) return;
   const amount = 2 + (intensity - 1) * 2;
   for (const side of ['player', 'enemy'] as Side[]) {
-    const ids = sideState(state, side).board.map((m) => m.id);
+    const ids = combatMinions(sideState(state, side).board).map((m) => m.id);
     for (const id of ids) {
       if (isEnded(state)) return;
       const m = sideState(state, side).board.find((x) => x.id === id);
@@ -302,5 +349,3 @@ export function activateOrStackHell(state: BattleState, events: BattleEvent[]): 
   state.hell.intensity += 1;
   events.push({ type: 'hellChange', intensity: state.hell.intensity });
 }
-
-export { RITUAL_THRESHOLDS };

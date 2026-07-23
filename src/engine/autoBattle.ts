@@ -3,10 +3,12 @@
 import { pick } from './rng.ts';
 import {
   clearEndOfRoundEffects,
+  combatMinions,
   damageHero,
   damageMinion,
   heroRef,
   isEnded,
+  isRitual,
   maybeLifesteal,
   minionRef,
   otherSide,
@@ -17,8 +19,9 @@ import {
 import type { BattleEvent, BattleResult, BattleState, Minion, Rng, Side } from './types.ts';
 
 function chooseTargetMinion(board: Minion[], rng: Rng): Minion {
+  const fighters = combatMinions(board);
   const taunts = tauntsOf(board);
-  const pool = taunts.length > 0 ? taunts : board;
+  const pool = taunts.length > 0 ? taunts : fighters;
   return pick(rng, pool);
 }
 
@@ -46,10 +49,11 @@ function resolveOneSwing(
 
   const defSide = otherSide(attackerSide);
   const defBoard = sideState(state, defSide).board;
+  const fighters = combatMinions(defBoard);
   const lifestealOpts = { fromLifestealSource: { side: attackerSide, minionId: attackerId } };
   const attackerReborn = { value: false };
 
-  if (defBoard.length > 0) {
+  if (fighters.length > 0) {
     const target = chooseTargetMinion(defBoard, rng);
     const attackerDamage = attacker.attack;
     const targetDamage = target.attack;
@@ -126,7 +130,7 @@ function resolveMinionAttacks(
   events: BattleEvent[],
 ): void {
   const attacker = sideState(state, attackerSide).board.find((m) => m.id === attackerId);
-  if (!attacker) return;
+  if (!attacker || isRitual(attacker)) return;
   if (attacker.hasAttackedThisTurn) return;
   const swings = 1 + (attacker.multiAttack ?? 0);
   for (let i = 0; i < swings; i += 1) {

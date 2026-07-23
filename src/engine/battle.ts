@@ -57,7 +57,6 @@ function buildPlayerState(
     energy: 0,
     maxEnergy: MAX_ENERGY,
     fatigueCount: 0,
-    rituals: [],
   };
 }
 

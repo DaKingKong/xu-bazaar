@@ -163,10 +163,19 @@ function applyEventToView(view: BattleState, ev: BattleEvent, authoritative: Bat
       break;
     case 'ritualUpdate': {
       const ps = sideState(view, ev.side);
-      const authRitual = sideState(authoritative, ev.side).rituals.find((r) => r.id === ev.ritualId);
-      const existing = ps.rituals.find((r) => r.id === ev.ritualId);
-      if (existing) existing.sacrifice = ev.sacrifice;
-      else if (authRitual) ps.rituals.push(clone(authRitual));
+      const existing = ps.board.find((m) => m.id === ev.ritualId);
+      if (existing?.ritual) {
+        existing.ritual.sacrifice = ev.sacrifice;
+        existing.hp = ev.hp;
+      } else {
+        const auth = sideState(authoritative, ev.side).board.find((m) => m.id === ev.ritualId);
+        if (auth) {
+          // 若 summon 事件尚未应用，补齐占位
+          if (!ps.board.some((m) => m.id === auth.id)) {
+            ps.board.push(clone(auth));
+          }
+        }
+      }
       break;
     }
     case 'shield': {

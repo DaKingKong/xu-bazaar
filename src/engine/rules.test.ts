@@ -74,7 +74,6 @@ function mkPlayer(side: Side, o: PlayerOpts = {}): PlayerState {
     energy: o.energy ?? 4,
     maxEnergy: 4,
     fatigueCount: o.fatigue ?? 0,
-    rituals: [],
   };
 }
 
@@ -207,7 +206,7 @@ describe('M3 出牌', () => {
     expect(state.player.discard.some((c) => c.id === 'fb')).toBe(true);
   });
 
-  it('灵光之盾：对仆从施法数 2 连续护盾+抽牌', () => {
+  it('灵光之盾：第一次打出扣费结算一次后留手', () => {
     const hand: CardInstance[] = [{ id: 'ag', defId: 'spell-aegis' }];
     const s = mkState({
       player: mkPlayer('player', {
@@ -221,8 +220,40 @@ describe('M3 出牌', () => {
       cardId: 'ag',
       target: { kind: 'minion', side: 'player', id: 'p1' },
     });
-    expect(state.player.board[0]!.shield).toBe(8);
+    expect(state.player.energy).toBe(2);
+    expect(state.player.board[0]!.shield).toBe(4);
+    expect(state.player.hand.some((c) => c.id === 'ag')).toBe(true);
+    expect(state.player.discard.some((c) => c.id === 'ag')).toBe(false);
+    // 抽 1 张后手牌：灵光之盾 + 抽出的牌
     expect(state.player.hand).toHaveLength(2);
+  });
+
+  it('灵光之盾：两次打出各扣费，第二次用尽进弃牌', () => {
+    const hand: CardInstance[] = [{ id: 'ag', defId: 'spell-aegis' }];
+    const s = mkState({
+      player: mkPlayer('player', {
+        hand,
+        energy: 4,
+        deck: deckOf(5),
+        board: [mkMinion('p1', 1, 3)],
+      }),
+    });
+    let st = playCard(s, {
+      cardId: 'ag',
+      target: { kind: 'minion', side: 'player', id: 'p1' },
+    }).state;
+    expect(st.player.energy).toBe(2);
+    expect(st.player.board[0]!.shield).toBe(4);
+    expect(st.player.hand.some((c) => c.id === 'ag')).toBe(true);
+
+    st = playCard(st, {
+      cardId: 'ag',
+      target: { kind: 'minion', side: 'player', id: 'p1' },
+    }).state;
+    expect(st.player.energy).toBe(0);
+    expect(st.player.board[0]!.shield).toBe(8);
+    expect(st.player.hand.some((c) => c.id === 'ag')).toBe(false);
+    expect(st.player.discard.some((c) => c.id === 'ag')).toBe(true);
   });
 
   it('大型仆从占两格：7 格占满不可召唤', () => {

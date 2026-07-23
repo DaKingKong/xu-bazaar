@@ -19,6 +19,8 @@ export {
   heroRef,
   minionRef,
   heroSkillDef,
+  combatMinions,
+  isRitual,
   scaleAttributeGain,
 } from './helpers.ts';
-export { trySummon } from './resolve.ts';
+export { trySummon, isRitualSpell } from './resolve.ts';

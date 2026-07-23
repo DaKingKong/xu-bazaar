@@ -44,6 +44,9 @@ interface CardDef {
 
   // 效果目标约束
   targeting?: TargetingRule;
+
+  // 施法数：同一实例最多可打出次数（默认 1）；每次打出结算一次
+  castCount?: number;
 }
 
 // 卡牌实例（进入牌堆/手牌后的运行时实体）
@@ -52,6 +55,8 @@ interface CardInstance {
   defId: string;            // 引用 CardDef
   // 疲劳生成的直接攻击卡会带动态覆盖值
   overrideDamage?: number;
+  // 剩余可打出次数；未设置时视为 CardDef.castCount ?? 1；进弃牌时清除
+  castsRemaining?: number;
 }
 
 // 目标规则

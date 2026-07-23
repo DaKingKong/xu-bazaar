@@ -2,6 +2,7 @@
 
 import { boardUsage, otherSide, sideState } from './helpers.ts';
 import { legalDiscardTargets, legalTargets, playCard } from './play.ts';
+import { isRitualSpell } from './resolve.ts';
 import { pick } from './rng.ts';
 import type {
   BattleResult,
@@ -13,7 +14,7 @@ import type {
   Side,
   TargetRef,
 } from './types.ts';
-import { BOARD_CAPACITY } from './types.ts';
+import { BOARD_CAPACITY, RITUAL_DEFS } from './types.ts';
 
 export function chooseCombo(
   hand: CardInstance[],
@@ -99,6 +100,12 @@ function chooseDiscard(
   return (sorted[0] ?? pick(rng, legal)).id;
 }
 
+function ritualSize(def: CardDef): number {
+  const effect = def.effects?.find((e) => e.type === 'ritual');
+  if (!effect || effect.type !== 'ritual') return 1;
+  return RITUAL_DEFS[effect.ritualKey].size;
+}
+
 function canPlayNow(state: BattleState, side: Side, card: CardInstance): boolean {
   const def = state.cardDb[card.defId];
   if (!def) return false;
@@ -106,6 +113,9 @@ function canPlayNow(state: BattleState, side: Side, card: CardInstance): boolean
   if (ps.energy < def.cost) return false;
   if (def.type === 'minion') {
     if (boardUsage(ps.board) + (def.minion?.size ?? 1) > BOARD_CAPACITY) return false;
+  }
+  if (isRitualSpell(def)) {
+    if (boardUsage(ps.board) + ritualSize(def) > BOARD_CAPACITY) return false;
   }
   if (def.targeting?.needsTarget) {
     if (legalTargets(state, side, def).length === 0) return false;
@@ -125,9 +135,10 @@ function buildAction(
   const def = state.cardDb[card.defId];
   if (!canPlayNow(state, side, card)) return null;
 
+  const needsPosition = def.type === 'minion' || isRitualSpell(def);
   const action: PlayCardAction = {
     cardId: card.id,
-    position: def.type === 'minion' ? sideState(state, side).board.length : undefined,
+    position: needsPosition ? sideState(state, side).board.length : undefined,
   };
 
   if (def.targeting?.needsDiscard) {

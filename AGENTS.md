@@ -7,8 +7,11 @@
 First-version battle system (M1–M7) is implemented, and the default match now uses the
 **catalog hell-warlock themed decks** (base card text from `docs/card-catalog.md`, no upgrades):
 pure-TS engine (`createBattle` / `playCard` / `useSkill` / `endTurn` / `runAutoBattle` /
-`runEnemyTurn`) with discard/graveyard, rituals, global hell field, cast-count multi-resolve,
-shields, rebirth, multi-attack, splash, and related keywords; Zustand store bridge with event
+`runEnemyTurn`) with discard/graveyard, board-slot rituals (HP = execution count; sacrifice
+threshold triggers; immune to damage; drag-reorderable), global hell field, multi-cast spells that
+stay in hand until casts are exhausted (each hand play costs energy), shields, rebirth,
+multi-attack, splash, and related keywords; 冥界牵引 returns a discard card to hand and
+plays it once for free (remaining casts may stay in hand); Zustand store bridge with event
 playback; playable battle UI (including discard pick for 冥界牵引) with Framer Motion; left-side
 battle log. Default heroes: player **地狱术士**, enemy **训练假人** (no skill; enemy deck omits
 地狱兽仪式). Equipment / relics remain UI placeholders. Card upgrades, growth, unlocks, and

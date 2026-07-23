@@ -10,7 +10,7 @@ import {
 import { runAutoBattle } from './autoBattle.ts';
 import { createBattle, runEnemyTurn } from './battle.ts';
 import { damageMinion, scaleAttributeGain } from './helpers.ts';
-import { playCard } from './play.ts';
+import { legalTargets, playCard } from './play.ts';
 import { trySummon } from './resolve.ts';
 import { makeRng } from './rng.ts';
 import type { BattleState, CardInstance, Minion, PlayerState, Side } from './types.ts';
@@ -57,7 +57,6 @@ function mkPlayer(side: Side, o: Partial<PlayerState> = {}): PlayerState {
     energy: o.energy ?? 4,
     maxEnergy: 4,
     fatigueCount: 0,
-    rituals: o.rituals ?? [],
     incomingDamageMultiplier: o.incomingDamageMultiplier,
   };
 }
@@ -133,7 +132,33 @@ describe('catalog-deck-v1', () => {
     expect(r2.state.player.board[0]!.rebirth).toBe(1);
   });
 
-  it('仪式献祭：5 次友方死亡召唤小恶魔并重置', () => {
+  it('仪式上场：恶魔传送门占 1 格 HP5；地狱兽仪式占 2 格 HP1', () => {
+    let s = mkState({
+      player: mkPlayer('player', {
+        hand: [
+          { id: 'portal', defId: 'spell-demon-portal' },
+          { id: 'beast', defId: 'spell-hell-beast-ritual' },
+        ],
+        energy: 8,
+      }),
+    });
+    s = playCard(s, { cardId: 'portal', position: 0 }).state;
+    const portal = s.player.board[0]!;
+    expect(portal.ritual?.ritualKey).toBe('demonPortal');
+    expect(portal.hp).toBe(5);
+    expect(portal.size).toBe(1);
+    expect(portal.ritual?.sacrifice).toBe(0);
+    expect(s.player.discard.some((c) => c.defId === 'spell-demon-portal')).toBe(false);
+
+    s = playCard(s, { cardId: 'beast', position: 1 }).state;
+    const beast = s.player.board[1]!;
+    expect(beast.ritual?.ritualKey).toBe('hellBeast');
+    expect(beast.hp).toBe(1);
+    expect(beast.size).toBe(2);
+    expect(beast.tags).toContain('large');
+  });
+
+  it('仪式献祭：5 次友方死亡召唤小恶魔、扣 HP，重置献祭；HP 归零进弃牌', () => {
     let s = mkState({
       player: mkPlayer('player', {
         hand: [{ id: 'p', defId: 'spell-demon-portal' }],
@@ -146,12 +171,78 @@ describe('catalog-deck-v1', () => {
         ],
       }),
     });
-    s = playCard(s, { cardId: 'p' }).state;
+    s = playCard(s, { cardId: 'p', position: 5 }).state;
+    const ritualId = s.player.board.find((m) => m.ritual)?.id;
+    expect(ritualId).toBeTruthy();
+
     for (const id of ['a', 'b', 'c', 'd', 'e']) {
       damageMinion(s, 'player', id, 1, []);
     }
-    expect(s.player.rituals[0]!.sacrifice).toBe(0);
+    const ritual = s.player.board.find((m) => m.id === ritualId);
+    expect(ritual?.ritual?.sacrifice).toBe(0);
+    expect(ritual?.hp).toBe(4);
     expect(s.player.board.some((m) => m.defId === 'token-imp-portal')).toBe(true);
+
+    // 再执行 4 次使 HP 归零
+    for (let wave = 0; wave < 4; wave += 1) {
+      for (let i = 0; i < 5; i += 1) {
+        const fodder = mkMinion(`f${wave}_${i}`, 0, 1);
+        s.player.board.push(fodder);
+        damageMinion(s, 'player', fodder.id, 1, []);
+      }
+    }
+    expect(s.player.board.some((m) => m.id === ritualId)).toBe(false);
+    expect(s.player.discard.some((c) => c.defId === 'spell-demon-portal')).toBe(true);
+  });
+
+  it('传送门计敌我仆从死亡；地狱兽仪式仅友方（含领主回复）', () => {
+    let s = mkState({
+      player: mkPlayer('player', {
+        hand: [
+          { id: 'portal', defId: 'spell-demon-portal' },
+          { id: 'beast', defId: 'spell-hell-beast-ritual' },
+        ],
+        energy: 8,
+        board: [mkMinion('ally', 0, 1)],
+      }),
+      enemy: mkPlayer('enemy', {
+        board: [mkMinion('foe', 0, 1)],
+      }),
+    });
+    s.player.hero.hp = 20;
+    s = playCard(s, { cardId: 'portal', position: 1 }).state;
+    s = playCard(s, { cardId: 'beast', position: 2 }).state;
+    const portal = s.player.board.find((m) => m.ritual?.ritualKey === 'demonPortal')!;
+    const beast = s.player.board.find((m) => m.ritual?.ritualKey === 'hellBeast')!;
+
+    damageMinion(s, 'enemy', 'foe', 1, []);
+    expect(portal.ritual!.sacrifice).toBe(1);
+    expect(beast.ritual!.sacrifice).toBe(0);
+    expect(s.player.hero.hp).toBe(20);
+
+    damageMinion(s, 'player', 'ally', 1, []);
+    expect(portal.ritual!.sacrifice).toBe(2);
+    expect(beast.ritual!.sacrifice).toBe(1);
+    expect(s.player.hero.hp).toBe(22);
+  });
+
+  it('仪式不受伤害且不可被点选', () => {
+    let s = mkState({
+      player: mkPlayer('player', {
+        hand: [{ id: 'p', defId: 'spell-demon-portal' }],
+      }),
+    });
+    s = playCard(s, { cardId: 'p' }).state;
+    const ritual = s.player.board[0]!;
+    expect(ritual.ritual).toBeTruthy();
+    damageMinion(s, 'player', ritual.id, 99, []);
+    expect(s.player.board[0]!.hp).toBe(5);
+    expect(s.player.board[0]!.id).toBe(ritual.id);
+
+    const targets = legalTargets(s, 'enemy', {
+      targeting: { needsTarget: true, allowHero: false, respectTaunt: false, side: 'enemy' },
+    });
+    expect(targets.some((t) => t.kind === 'minion' && t.id === ritual.id)).toBe(false);
   });
 
   it('凯斯提入场激活全局地狱；回合末非地狱仆从受伤', () => {
@@ -189,6 +280,41 @@ describe('catalog-deck-v1', () => {
     expect(state.player.energy).toBe(1);
     expect(state.player.discard.some((c) => c.id === 'old-fb')).toBe(true);
     expect(state.player.discard.some((c) => c.id === 'np')).toBe(true);
+  });
+
+  it('冥界牵引灵光之盾：免费打一次后留手，再从手牌付费打出', () => {
+    const s = mkState({
+      player: mkPlayer('player', {
+        hand: [{ id: 'np', defId: 'spell-nether-pull' }],
+        discard: [{ id: 'old-ag', defId: 'spell-aegis' }],
+        energy: 6,
+        deck: [
+          { id: 'd1', defId: 'minion-ice' },
+          { id: 'd2', defId: 'minion-ice' },
+        ],
+        board: [mkMinion('p1', 1, 3)],
+      }),
+      enemy: mkPlayer('enemy'),
+    });
+    let st = playCard(s, {
+      cardId: 'np',
+      discardCardId: 'old-ag',
+      target: { kind: 'minion', side: 'player', id: 'p1' },
+    }).state;
+    expect(st.player.energy).toBe(3);
+    expect(st.player.board[0]!.shield).toBe(4);
+    expect(st.player.hand.some((c) => c.id === 'old-ag')).toBe(true);
+    expect(st.player.discard.some((c) => c.id === 'old-ag')).toBe(false);
+    expect(st.player.discard.some((c) => c.id === 'np')).toBe(true);
+
+    st = playCard(st, {
+      cardId: 'old-ag',
+      target: { kind: 'minion', side: 'player', id: 'p1' },
+    }).state;
+    expect(st.player.energy).toBe(1);
+    expect(st.player.board[0]!.shield).toBe(8);
+    expect(st.player.hand.some((c) => c.id === 'old-ag')).toBe(false);
+    expect(st.player.discard.some((c) => c.id === 'old-ag')).toBe(true);
   });
 
   it('诅咒爆破：AOE 后本回合敌方仆从双倍受伤', () => {

@@ -4,9 +4,11 @@ import { drawOne } from './draw.ts';
 import {
   activateOrStackHell,
   boardUsage,
+  combatMinions,
   damageHero,
   damageMinion,
   isEnded,
+  isRitual,
   nextId,
   otherSide,
   pushDiscard,
@@ -25,7 +27,7 @@ import type {
   Side,
   TargetRef,
 } from './types.ts';
-import { BOARD_CAPACITY } from './types.ts';
+import { BOARD_CAPACITY, RITUAL_DEFS } from './types.ts';
 
 function targetsEqual(a: TargetRef, b: TargetRef): boolean {
   if (a.kind !== b.kind || a.side !== b.side) return false;
@@ -95,13 +97,68 @@ function ritualSummonDefId(key: RitualKey): string {
 function onRitualThreshold(
   state: BattleState,
   side: Side,
-  ritual: { ritualKey: RitualKey },
+  ritual: Minion,
   events: BattleEvent[],
 ): void {
-  trySummon(state, side, ritualSummonDefId(ritual.ritualKey), events);
+  const key = ritual.ritual?.ritualKey;
+  if (!key) return;
+  trySummon(state, side, ritualSummonDefId(key), events);
 }
 
 setRitualSummonHook(onRitualThreshold);
+
+export function isRitualSpell(def: CardDef): boolean {
+  return !!def.effects?.some((e) => e.type === 'ritual');
+}
+
+export function createRitualUnit(
+  def: CardDef,
+  ritualKey: RitualKey,
+  instanceId: string,
+): Minion {
+  const meta = RITUAL_DEFS[ritualKey];
+  return {
+    id: `ritual_${instanceId}`,
+    defId: def.defId,
+    attack: 0,
+    hp: meta.hp,
+    maxHp: meta.hp,
+    size: meta.size,
+    keywords: [],
+    tags: meta.large ? ['large'] : [],
+    ritual: { ritualKey, sacrifice: 0 },
+  };
+}
+
+export function tryPlaceRitual(
+  state: BattleState,
+  side: Side,
+  def: CardDef,
+  ritualKey: RitualKey,
+  events: BattleEvent[],
+  opts?: { position?: number; instanceId?: string },
+): Minion | null {
+  const meta = RITUAL_DEFS[ritualKey];
+  const ps = sideState(state, side);
+  if (boardUsage(ps.board) + meta.size > BOARD_CAPACITY) return null;
+
+  const instanceId = opts?.instanceId ?? nextId(state, `rit-${side}`);
+  const unit = createRitualUnit(def, ritualKey, instanceId);
+  const index =
+    opts?.position == null
+      ? ps.board.length
+      : Math.max(0, Math.min(opts.position, ps.board.length));
+  ps.board.splice(index, 0, unit);
+  events.push({ type: 'summon', side, minionId: unit.id, index });
+  events.push({
+    type: 'ritualUpdate',
+    side,
+    ritualId: unit.id,
+    sacrifice: 0,
+    hp: unit.hp,
+  });
+  return unit;
+}
 
 export interface EffectContext {
   target?: TargetRef;
@@ -111,6 +168,10 @@ export interface EffectContext {
   discardCardId?: string;
   position?: number;
   freeReplay?: boolean;
+  /** 仪式已成功占位（勿再进弃牌） */
+  ritualPlaced?: boolean;
+  /** 仪式因场满未能占位 */
+  ritualFailed?: boolean;
 }
 
 export function applyCardEffect(
@@ -140,7 +201,8 @@ export function applyCardEffect(
         ps.hero.hp = Math.min(ps.hero.maxHp, ps.hero.hp + effect.amount);
       } else {
         const m = ps.board.find((x) => x.id === target.id);
-        if (m) m.hp = Math.min(m.maxHp, m.hp + effect.amount);
+        if (m && !isRitual(m)) m.hp = Math.min(m.maxHp, m.hp + effect.amount);
+        else if (!m || isRitual(m)) return;
       }
       events.push({ type: 'heal', target, amount: effect.amount });
       break;
@@ -153,7 +215,7 @@ export function applyCardEffect(
       if (!ctx.target || ctx.target.kind !== 'minion') return;
       const target = ctx.target;
       const m = sideState(state, target.side).board.find((x) => x.id === target.id);
-      if (!m) return;
+      if (!m || isRitual(m)) return;
       m.shield = (m.shield ?? 0) + effect.amount;
       events.push({ type: 'shield', target, amount: effect.amount });
       break;
@@ -163,8 +225,9 @@ export function applyCardEffect(
       const target = ctx.target;
       const ps = sideState(state, target.side);
       const m = ps.board.find((x) => x.id === target.id);
-      if (m) ctx.targetCost = state.cardDb[m.defId]?.cost ?? 0;
-      if (m) m.rebirth = 0;
+      if (!m || isRitual(m)) return;
+      ctx.targetCost = state.cardDb[m.defId]?.cost ?? 0;
+      m.rebirth = 0;
       damageMinion(state, target.side, target.id, 9999, events);
       break;
     }
@@ -177,7 +240,7 @@ export function applyCardEffect(
       if (!ctx.target || ctx.target.kind !== 'minion') return;
       const target = ctx.target;
       const m = sideState(state, target.side).board.find((x) => x.id === target.id);
-      if (!m) return;
+      if (!m || isRitual(m)) return;
       m.multiAttack = (m.multiAttack ?? 0) + effect.amount;
       break;
     }
@@ -185,7 +248,7 @@ export function applyCardEffect(
       if (!ctx.target || ctx.target.kind !== 'minion') return;
       const target = ctx.target;
       const m = sideState(state, target.side).board.find((x) => x.id === target.id);
-      if (!m) return;
+      if (!m || isRitual(m)) return;
       if (!m.keywords.includes('splash')) m.keywords.push('splash');
       break;
     }
@@ -197,24 +260,21 @@ export function applyCardEffect(
       break;
     }
     case 'ritual': {
-      const ps = sideState(state, actingSide);
-      const ritual = {
-        id: nextId(state, `ritual-${actingSide}`),
-        ritualKey: effect.ritualKey,
-        sacrifice: 0,
-      };
-      ps.rituals.push(ritual);
-      events.push({
-        type: 'ritualUpdate',
-        side: actingSide,
-        ritualId: ritual.id,
-        sacrifice: 0,
+      const placed = tryPlaceRitual(state, actingSide, ctx.sourceDef!, effect.ritualKey, events, {
+        position: ctx.position,
+        instanceId: ctx.playedInstance?.id,
       });
+      if (!placed && ctx.playedInstance) {
+        // 场满：仪式卡进弃牌（由调用方决定是否再走 placeAfterCast）
+        ctx.ritualFailed = true;
+      } else if (placed) {
+        ctx.ritualPlaced = true;
+      }
       break;
     }
     case 'aoeDamageEnemies': {
       const opp = otherSide(actingSide);
-      const minionIds = sideState(state, opp).board.map((m) => m.id);
+      const minionIds = combatMinions(sideState(state, opp).board).map((m) => m.id);
       for (const id of minionIds) {
         if (isEnded(state)) return;
         damageMinion(state, opp, id, effect.amount, events);
@@ -236,6 +296,8 @@ export function applyCardEffect(
       const dIdx = ps.discard.findIndex((c) => c.id === discardId);
       if (dIdx < 0) throw new Error('discard card not found');
       const [chosen] = ps.discard.splice(dIdx, 1);
+      // 进弃牌时可能残留次数；回手按满施法数起算
+      delete chosen.castsRemaining;
       const chosenDef = state.cardDb[chosen.defId];
       if (!chosenDef) throw new Error(`unknown card def: ${chosen.defId}`);
 
@@ -243,19 +305,30 @@ export function applyCardEffect(
         throw new Error('target required for replayed card');
       }
 
+      // 弃牌 → 回手 → 免费打出一次
+      ps.hand.push(chosen);
       events.push({
         type: 'playCard',
         side: actingSide,
         cardId: chosen.id,
         target: ctx.target,
       });
-      resolvePlayedCard(state, actingSide, chosen, chosenDef, events, {
+      const handIdx = ps.hand.findIndex((c) => c.id === chosen.id);
+      if (handIdx >= 0) ps.hand.splice(handIdx, 1);
+
+      const replayCtx: EffectContext = {
         target: ctx.target,
         position: ctx.position,
         freeReplay: true,
         playedInstance: chosen,
-      });
-      if (chosenDef.type !== 'minion') {
+      };
+      resolvePlayedCard(state, actingSide, chosen, chosenDef, events, replayCtx);
+      if (chosenDef.type === 'spell') {
+        if (!replayCtx.ritualPlaced) {
+          placeAfterCast(state, actingSide, chosen, chosenDef, events);
+        }
+      } else if (chosenDef.type === 'attack') {
+        delete chosen.castsRemaining;
         pushDiscard(state, actingSide, chosen, events);
       }
       break;
@@ -263,6 +336,32 @@ export function applyCardEffect(
     default:
       break;
   }
+}
+
+/** 当前实例还剩几次可打出（未设置时用原型施法数）。 */
+export function castsLeft(instance: CardInstance, def: CardDef): number {
+  return instance.castsRemaining ?? def.castCount ?? 1;
+}
+
+/**
+ * 法术打出结算后：消耗 1 次施法数；有剩余则留手，否则进弃牌。
+ * 仆从不走此路径（上场；死亡才进弃牌）。
+ */
+export function placeAfterCast(
+  state: BattleState,
+  side: Side,
+  instance: CardInstance,
+  def: CardDef,
+  events: BattleEvent[],
+): void {
+  const left = castsLeft(instance, def) - 1;
+  if (left > 0) {
+    instance.castsRemaining = left;
+    sideState(state, side).hand.push(instance);
+    return;
+  }
+  delete instance.castsRemaining;
+  pushDiscard(state, side, instance, events);
 }
 
 export function resolvePlayedCard(
@@ -284,20 +383,20 @@ export function resolvePlayedCard(
     return;
   }
 
-  const casts = def.castCount ?? 1;
   const effectList: CardEffect[] =
     def.effects && def.effects.length > 0 ? def.effects : legacyEffects(def, instance);
 
-  for (let c = 0; c < casts; c += 1) {
-    const shared: EffectContext = {
-      ...ctx,
-      playedInstance: instance,
-      sourceDef: def,
-    };
-    for (const effect of effectList) {
-      applyCardEffect(state, actingSide, effect, events, shared);
-    }
+  const shared: EffectContext = {
+    ...ctx,
+    playedInstance: instance,
+    sourceDef: def,
+  };
+  for (const effect of effectList) {
+    applyCardEffect(state, actingSide, effect, events, shared);
   }
+  // 把仪式占位结果回写，供 playCard / replay 决定是否进弃牌
+  ctx.ritualPlaced = shared.ritualPlaced;
+  ctx.ritualFailed = shared.ritualFailed;
 }
 
 function legacyEffects(def: CardDef, instance: CardInstance): CardEffect[] {

@@ -518,6 +518,12 @@
   box-shadow: 0 0 0 2px rgba(183, 132, 43, 0.35);
 }
 
+.minion--ritual {
+  background: linear-gradient(180deg, #2a3a2e, #1a241c);
+  border-color: #4a7a55;
+  border-style: dashed;
+}
+
 .minion__name {
   font-size: 0.78rem;
   color: #e6ebf2;
@@ -761,6 +767,12 @@
   font-size: 0.82rem;
   font-weight: 600;
   color: #eef2f8;
+}
+
+.card__casts {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #9ec5ff;
 }
 
 .card__effect {

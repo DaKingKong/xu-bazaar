@@ -23,7 +23,6 @@ function makePlayer(side: 'player' | 'enemy', overrides: Partial<PlayerState> = 
     energy: 4,
     maxEnergy: 4,
     fatigueCount: 0,
-    rituals: [],
     ...overrides,
   };
 }

@@ -2,6 +2,7 @@
 
 import {
   boardUsage,
+  combatMinions,
   damageHero,
   damageMinion,
   isEnded,
@@ -10,18 +11,20 @@ import {
   sideState,
   tauntsOf,
 } from './helpers.ts';
-import { resolvePlayedCard, targetsEqual } from './resolve.ts';
+import { isRitualSpell, placeAfterCast, resolvePlayedCard, targetsEqual } from './resolve.ts';
+import type { EffectContext } from './resolve.ts';
 import type {
   BattleEvent,
   BattleResult,
   BattleState,
+  CardDef,
   CardInstance,
   PlayCardAction,
   Side,
   TargetRef,
   TargetingRule,
 } from './types.ts';
-import { BOARD_CAPACITY } from './types.ts';
+import { BOARD_CAPACITY, RITUAL_DEFS } from './types.ts';
 
 export function legalTargets(
   state: BattleState,
@@ -37,9 +40,9 @@ export function legalTargets(
 
   const result: TargetRef[] = [];
   for (const s of sides) {
-    const board = sideState(state, s).board;
+    const board = combatMinions(sideState(state, s).board);
     if (t.respectTaunt && s === opp) {
-      const taunts = tauntsOf(board);
+      const taunts = tauntsOf(sideState(state, s).board);
       if (taunts.length > 0) {
         for (const m of taunts) result.push({ kind: 'minion', side: s, id: m.id });
       } else if (board.length > 0) {
@@ -67,7 +70,13 @@ function targetAttack(state: BattleState, target: TargetRef): number {
   const ps = sideState(state, target.side);
   if (target.kind === 'hero') return ps.hero.attack;
   const m = ps.board.find((x) => x.id === target.id);
-  return m ? m.attack : 0;
+  return m && !m.ritual ? m.attack : 0;
+}
+
+function ritualBoardSize(def: CardDef): number {
+  const key = def.effects?.find((e) => e.type === 'ritual');
+  if (!key || key.type !== 'ritual') return 1;
+  return RITUAL_DEFS[key.ritualKey].size;
 }
 
 export function playCard(state: BattleState, action: PlayCardAction, _rng?: unknown): BattleResult {
@@ -80,7 +89,7 @@ export function playCard(state: BattleState, action: PlayCardAction, _rng?: unkn
   const handIdx = ps.hand.findIndex((c) => c.id === action.cardId);
   if (handIdx < 0) throw new Error(`card not in hand: ${action.cardId}`);
 
-  const instance = ps.hand[handIdx];
+  const instance = ps.hand[handIdx]!;
   const def = s.cardDb[instance.defId];
   if (!def) throw new Error(`unknown card def: ${instance.defId}`);
   if (ps.energy < def.cost) throw new Error('not enough energy');
@@ -110,6 +119,12 @@ export function playCard(state: BattleState, action: PlayCardAction, _rng?: unkn
     }
   }
 
+  if (isRitualSpell(def)) {
+    if (boardUsage(ps.board) + ritualBoardSize(def) > BOARD_CAPACITY) {
+      throw new Error('board is full: cannot place ritual');
+    }
+  }
+
   ps.energy -= def.cost;
   ps.hand.splice(handIdx, 1);
   events.push({ type: 'playCard', side, cardId: instance.id, target: action.target });
@@ -131,16 +146,19 @@ export function playCard(state: BattleState, action: PlayCardAction, _rng?: unkn
     return { state: s, events };
   }
 
-  resolvePlayedCard(s, side, instance, def, events, {
+  const resolveCtx: EffectContext = {
     target: action.target,
     position: action.position,
     discardCardId: action.discardCardId,
     playedInstance: instance,
-  });
+  };
+  resolvePlayedCard(s, side, instance, def, events, resolveCtx);
 
-  // 法术进弃牌；仆从在死亡时进弃牌（召唤成功时不进）
+  // 法术：按施法数留手或进弃牌；仪式成功占位则不上弃牌；仆从在死亡时进弃牌
   if (def.type === 'spell') {
-    pushDiscard(s, side, instance, events);
+    if (!resolveCtx.ritualPlaced) {
+      placeAfterCast(s, side, instance, def, events);
+    }
   }
 
   return { state: s, events };

@@ -190,7 +190,7 @@ export const CARD_DEFS: CardDef[] = [
     name: '灵光之盾',
     type: 'spell',
     cost: 2,
-    description: '目标护盾 +4，抽取 1。（施法数 2：对同一目标连续生效 2 次）',
+    description: '目标护盾 +4，抽取 1。（施法数 2：最多打出 2 次，每次扣费）',
     castCount: 2,
     targeting: ALLY_ANY,
     effects: [
@@ -246,7 +246,7 @@ export const CARD_DEFS: CardDef[] = [
     name: '冥界牵引',
     type: 'spell',
     cost: 3,
-    description: '从弃牌堆中指定 1 张卡牌免费用使用。',
+    description: '从弃牌堆指定 1 张卡回手并免费用打出一次。',
     targeting: {
       needsTarget: false,
       allowHero: false,
@@ -261,15 +261,16 @@ export const CARD_DEFS: CardDef[] = [
     name: '恶魔传送门',
     type: 'spell',
     cost: 4,
-    description: '仪式：仆从死亡时献祭 +1。献祭 5：召唤 1 名小恶魔。',
+    description: '仪式占位（1 格，生命 5）：敌我仆从死亡时献祭 +1。献祭 5：召唤 1 名小恶魔；每次执行生命 -1。',
     effects: [{ type: 'ritual', ritualKey: 'demonPortal' }],
   },
   {
     defId: 'spell-hell-beast-ritual',
     name: '地狱兽仪式',
     type: 'spell',
-    cost: 2,
-    description: '仪式：友方仆从死亡时献祭 +1，领主回复 +2。献祭 7：召唤地狱兽凯斯提。',
+    cost: 4,
+    description:
+      '仪式占位（大型 2 格，生命 1）：友方仆从死亡时献祭 +1，领主回复 +2。献祭 9：召唤地狱兽凯斯提；每次执行生命 -1。',
     effects: [{ type: 'ritual', ritualKey: 'hellBeast' }],
   },
 ];

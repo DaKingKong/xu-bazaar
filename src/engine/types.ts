@@ -29,7 +29,7 @@ export interface TriggeredEffect {
   effects: EffectKeyword[];
 }
 
-/** 卡牌打出/入场时结算的效果（按数组顺序；施法数 N 则整段重复 N 次）。 */
+/** 卡牌打出/入场时结算的效果（按数组顺序；每次打出结算一整段一次）。 */
 export type CardEffect =
   | { type: 'damage'; amount: number }
   | { type: 'heal'; amount: number }
@@ -47,11 +47,20 @@ export type CardEffect =
 
 export type RitualKey = 'demonPortal' | 'hellBeast';
 
-export interface RitualEffect {
-  id: EntityId;
+/** 棋盘仪式占位上的运行时字段（挂在 Minion.ritual）。 */
+export interface RitualState {
   ritualKey: RitualKey;
   sacrifice: number;
 }
+
+/** 仪式原型：生命=可执行次数；size 占格；threshold=献祭达标线。 */
+export const RITUAL_DEFS: Record<
+  RitualKey,
+  { hp: number; size: 1 | 2; threshold: number; large?: boolean }
+> = {
+  demonPortal: { hp: 5, size: 1, threshold: 5 },
+  hellBeast: { hp: 1, size: 2, threshold: 9, large: true },
+};
 
 // --- 卡牌 ---
 
@@ -80,7 +89,10 @@ export interface CardDef {
   /** @deprecated 优先使用 effects */
   heal?: number;
   targeting?: TargetingRule;
-  /** 施法数：对同一目标连续结算 effects（及 legacy damage/heal）的次数，默认 1 */
+  /**
+   * 施法数：同一实例最多可打出的次数（默认 1）。
+   * 每次打出结算一次正文并消耗 1 次；从手牌打出每次都扣费用；用尽后进弃牌。
+   */
   castCount?: number;
   effects?: CardEffect[];
   /** 仆从入场时触发 */
@@ -93,6 +105,11 @@ export interface CardInstance {
   defId: string;
   // 疲劳生成的直接攻击卡会带动态覆盖值
   overrideDamage?: number;
+  /**
+   * 剩余可打出次数。未设置时视为 `CardDef.castCount ?? 1`。
+   * 进弃牌时清除，再次入手（含冥界牵引）按满施法数起算。
+   */
+  castsRemaining?: number;
 }
 
 // --- 仆从 ---
@@ -124,6 +141,11 @@ export interface Minion {
   shield?: number;
   /** 装甲：每次受伤 -1 */
   armor?: number;
+  /**
+   * 仪式占位：存在时不受伤害、不参战、不可被选为目标。
+   * hp / maxHp 表示剩余 / 初始可执行次数；每次献祭达标执行后 hp -1，归零进弃牌。
+   */
+  ritual?: RitualState;
 }
 
 // --- 英雄技能 ---
@@ -177,8 +199,6 @@ export interface PlayerState {
   energy: number;
   maxEnergy: number;
   fatigueCount: number;
-  /** 本侧仪式场地效果（可多条并存） */
-  rituals: RitualEffect[];
   /** 本回合敌方仆从受伤倍率（诅咒爆破等）；挂在受害方 */
   incomingDamageMultiplier?: number;
 }
@@ -273,7 +293,13 @@ export type BattleEvent =
   | { type: 'phaseChange'; phase: Phase }
   | { type: 'gameOver'; winner: Side }
   | { type: 'discard'; side: Side; cardId: EntityId }
-  | { type: 'ritualUpdate'; side: Side; ritualId: EntityId; sacrifice: number }
+  | {
+      type: 'ritualUpdate';
+      side: Side;
+      ritualId: EntityId;
+      sacrifice: number;
+      hp: number;
+    }
   | { type: 'hellChange'; intensity: number }
   | { type: 'shield'; target: TargetRef; amount: number };
 

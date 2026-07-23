@@ -3,7 +3,7 @@ import { AnimatePresence, Reorder, motion } from 'framer-motion';
 import type { Transition } from 'framer-motion';
 import { useBattleStore } from '../store/battleStore.ts';
 import type { CombatAnim, FloaterState, LogEntry } from '../store/battleStore.ts';
-import { heroSkillDef, legalTargets } from '../engine/index.ts';
+import { heroSkillDef, isRitualSpell, legalTargets } from '../engine/index.ts';
 import type {
   BattleState,
   CardDef,
@@ -13,7 +13,7 @@ import type {
   SkillDef,
   TargetRef,
 } from '../engine/types.ts';
-import { MAX_ENERGY } from '../engine/types.ts';
+import { MAX_ENERGY, RITUAL_DEFS } from '../engine/types.ts';
 import './App.css';
 
 
@@ -211,58 +211,52 @@ function HeroArea({
   );
 }
 
-// 仆从内容（立绘/属性/关键字），供普通与可拖拽两种容器复用。
+// 仆从/仪式内容（立绘/属性/关键字），供普通与可拖拽两种容器复用。
 function MinionInner({ view, minion }: { view: BattleState; minion: Minion }) {
   const def = view.cardDb[minion.defId];
+  const isRitualUnit = minion.ritual != null;
   return (
     <>
       <span className="minion__name">{def?.name ?? minion.defId}</span>
-      <span className="badge badge--atk stat stat--atk">{minion.attack}</span>
-      <span className="badge badge--hp stat stat--hp">{minion.hp}</span>
-      {(minion.shield ?? 0) > 0 && (
-        <span className="badge badge--shield" title="护盾">
-          盾{minion.shield}
-        </span>
+      {isRitualUnit ? (
+        <>
+          <span className="badge badge--atk stat stat--atk" title="献祭进度">
+            {minion.ritual!.sacrifice}/{RITUAL_DEFS[minion.ritual!.ritualKey].threshold}
+          </span>
+          <span className="badge badge--hp stat stat--hp" title="剩余执行次数">
+            {minion.hp}
+          </span>
+        </>
+      ) : (
+        <>
+          <span className="badge badge--atk stat stat--atk">{minion.attack}</span>
+          <span className="badge badge--hp stat stat--hp">{minion.hp}</span>
+          {(minion.shield ?? 0) > 0 && (
+            <span className="badge badge--shield" title="护盾">
+              盾{minion.shield}
+            </span>
+          )}
+          {(minion.armor ?? 0) > 0 && (
+            <span className="badge badge--armor" title="装甲">
+              甲{minion.armor}
+            </span>
+          )}
+          {minion.keywords.includes('taunt') && <span className="badge badge--taunt">嘲讽</span>}
+        </>
       )}
-      {(minion.armor ?? 0) > 0 && (
-        <span className="badge badge--armor" title="装甲">
-          甲{minion.armor}
-        </span>
-      )}
-      {minion.keywords.includes('taunt') && <span className="badge badge--taunt">嘲讽</span>}
     </>
   );
 }
 
-const RITUAL_LABEL: Record<string, string> = {
-  demonPortal: '传送门',
-  hellBeast: '地狱兽',
-};
-
 function FieldStrip({ view }: { view: BattleState }) {
-  const rituals = [
-    ...view.player.rituals.map((r) => ({ ...r, owner: '我' as const })),
-    ...view.enemy.rituals.map((r) => ({ ...r, owner: '敌' as const })),
-  ];
   return (
-    <div className="field-strip" aria-label="场地与仪式">
+    <div className="field-strip" aria-label="场地">
       <div
         className={`field-chip field-chip--hell${view.hell.intensity > 0 ? ' field-chip--active' : ''}`}
         title="全局地狱场地"
       >
         {view.hell.intensity > 0 ? `地狱×${view.hell.intensity}` : '场地'}
       </div>
-      {rituals.map((r) => (
-        <div
-          key={r.id}
-          className={`field-chip field-chip--ritual field-chip--${r.owner === '我' ? 'player' : 'enemy'}`}
-          title={`${r.owner}方仪式`}
-        >
-          <span className="field-chip__owner">{r.owner}</span>
-          <span className="field-chip__name">{RITUAL_LABEL[r.ritualKey] ?? r.ritualKey}</span>
-          <span className="field-chip__sac">{r.sacrifice}</span>
-        </div>
-      ))}
     </div>
   );
 }
@@ -272,6 +266,7 @@ function minionClass(minion: Minion, extra: Record<string, boolean>): string {
     'minion',
     'frame',
     minion.size === 2 ? 'minion--large' : '',
+    minion.ritual ? 'minion--ritual' : '',
     minion.keywords.includes('taunt') ? 'minion--taunt' : '',
     ...Object.entries(extra)
       .filter(([, on]) => on)
@@ -364,6 +359,8 @@ function HandCard({
   const def = view.cardDb[card.defId];
   const affordable = view.player.energy >= (def?.cost ?? 0);
   const damage = card.overrideDamage ?? def?.damage;
+  const castMax = def?.castCount ?? 1;
+  const castLeft = card.castsRemaining ?? castMax;
   return (
     <motion.button
       type="button"
@@ -386,13 +383,34 @@ function HandCard({
     >
       <span className="card__cost">{def?.cost ?? 0}</span>
       <span className="card__name">{def?.name ?? card.defId}</span>
+      {castMax > 1 && (
+        <span className="card__casts" title="剩余施法数">
+          施法 {castLeft}/{castMax}
+        </span>
+      )}
       {def?.type === 'minion' && def.minion && (
         <span className="card__stats">
           <span className="stat stat--atk">{def.minion.attack}</span>
           <span className="stat stat--hp">{def.minion.hp}</span>
         </span>
       )}
-      {def?.type !== 'minion' && (
+      {def && isRitualSpell(def) && (
+        <span className="card__stats">
+          <span className="stat stat--hp">
+            {
+              RITUAL_DEFS[
+                (
+                  def.effects!.find((e) => e.type === 'ritual') as {
+                    type: 'ritual';
+                    ritualKey: keyof typeof RITUAL_DEFS;
+                  }
+                ).ritualKey
+              ].hp
+            }
+          </span>
+        </span>
+      )}
+      {def?.type !== 'minion' && !(def && isRitualSpell(def)) && (
         <span className="card__effect">
           {def?.heal != null ? `治疗 ${def.heal}` : damage != null ? `伤害 ${damage}` : ''}
         </span>
@@ -496,7 +514,11 @@ function App() {
         ? (pendingDef ?? pendingSkill)
         : null;
 
-  const isPlacing = isPlayerTurn && pending?.kind === 'card' && pendingDef?.type === 'minion';
+  const isPlacing =
+    isPlayerTurn &&
+    pending?.kind === 'card' &&
+    !!pendingDef &&
+    (pendingDef.type === 'minion' || isRitualSpell(pendingDef));
   const isDiscardPick = isPlayerTurn && pending?.kind === 'discardPick';
   const isTargeting = isPlayerTurn && !!targetingDef?.targeting?.needsTarget;
   const canReorder =
@@ -548,7 +570,7 @@ function App() {
       setPending({ kind: 'discardPick', cardId: card.id });
       return;
     }
-    if (def.type === 'minion') {
+    if (def.type === 'minion' || isRitualSpell(def)) {
       if (view.player.board.length === 0) {
         playCard({ cardId: card.id, position: 0 });
       } else {
@@ -787,7 +809,7 @@ function App() {
           {isDiscardPick
             ? '从弃牌堆选择一张卡使用'
             : isPlacing
-              ? '选择召唤位置（点击插入点）'
+              ? '选择放置位置（点击插入点）'
               : '选择目标'}
           <button type="button" className="hint__cancel" onClick={() => setPending(null)}>
             取消
@@ -796,7 +818,7 @@ function App() {
       )}
 
       {canReorder && (
-        <div className="hint hint--reorder">拖拽可重排你的仆从位置</div>
+        <div className="hint hint--reorder">拖拽可重排你的仆从与仪式</div>
       )}
 
       <AnimatePresence>
