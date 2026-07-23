@@ -229,6 +229,8 @@ interface BattleStoreState {
   useSkill: (action: UseSkillAction) => void;
   reorderMinion: (fromIndex: number, toIndex: number) => void;
   endTurn: () => void;
+  /** 调试：将玩家费用上限永久改为给定值，并立即回满。 */
+  setPlayerMaxEnergy: (max: number) => void;
   clearFloater: (id: number) => void;
 }
 
@@ -394,6 +396,20 @@ export const useBattleStore = create<BattleStoreState>((set, get) => {
 
       set({ pending: null });
       enqueue(events, s);
+    },
+
+    setPlayerMaxEnergy: (max: number) => {
+      if (!authoritative || max < 1) return;
+      const next = clone(authoritative);
+      next.player.maxEnergy = max;
+      next.player.energy = max;
+      authoritative = next;
+      const view = get().view ? clone(get().view!) : null;
+      if (view) {
+        view.player.maxEnergy = max;
+        view.player.energy = max;
+      }
+      set({ view: view ?? clone(next) });
     },
 
     clearFloater: (id: number) => set((s) => ({ floaters: s.floaters.filter((f) => f.id !== id) })),

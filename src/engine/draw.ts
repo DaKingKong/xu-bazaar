@@ -4,7 +4,7 @@
 import { FATIGUE_STRIKE_DEF_ID } from '../data/index.ts';
 import { damageHero, isEnded, sideState } from './helpers.ts';
 import type { BattleEvent, BattleState, Side } from './types.ts';
-import { FIRST_TURN_DRAW, MAX_ENERGY, MAX_HAND_SIZE, PER_TURN_DRAW } from './types.ts';
+import { FIRST_TURN_DRAW, MAX_HAND_SIZE, PER_TURN_DRAW } from './types.ts';
 
 // 单次抽牌（就地修改状态）。规则：
 // - 卡组非空且手牌未满：从顶部抽 1 张进手牌，推 draw 事件。
@@ -41,13 +41,13 @@ export function drawOne(state: BattleState, side: Side, events: BattleEvent[]): 
   events.push({ type: 'draw', side, cardId: card.id });
 }
 
-// 回合开始处理：能量重置为 4，重置技能使用标记，随后抽牌（首回合 5 张，之后 2 张）。
+// 回合开始处理：能量重置为该方 maxEnergy，重置技能使用标记，随后抽牌（首回合 5 张，之后 2 张）。
 export function beginTurn(state: BattleState, side: Side, events: BattleEvent[]): void {
   if (isEnded(state)) return;
   const ps = sideState(state, side);
-  ps.energy = MAX_ENERGY;
+  ps.energy = ps.maxEnergy;
   ps.hero.skillUsedThisTurn = false;
-  events.push({ type: 'energyReset', side, value: MAX_ENERGY });
+  events.push({ type: 'energyReset', side, value: ps.maxEnergy });
 
   const drawCount = state.turn === 1 ? FIRST_TURN_DRAW : PER_TURN_DRAW;
   for (let i = 0; i < drawCount; i += 1) {

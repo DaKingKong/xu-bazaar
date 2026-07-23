@@ -15,6 +15,9 @@ export type StatusKeyword = 'taunt' | 'splash';
 /** @deprecated 使用 StatusKeyword；保留别名以兼容现有仆从字段 */
 export type Keyword = StatusKeyword;
 
+/** 卡牌级词条（挂在 CardDef，非场上仆从状态） */
+export type CardKeyword = 'vanguard'; // 先锋：战斗开始时置于牌库顶端
+
 export type MinionTag = 'hell' | 'large';
 
 // 条件类词条：满足条件时触发后续效果词条
@@ -97,6 +100,8 @@ export interface CardDef {
   effects?: CardEffect[];
   /** 仆从入场时触发 */
   onEnter?: CardEffect[];
+  /** 卡牌级词条（如先锋） */
+  keywords?: CardKeyword[];
 }
 
 // 卡牌实例（进入牌堆/手牌后的运行时实体）

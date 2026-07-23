@@ -15,6 +15,8 @@ import type {
   BattleInit,
   BattleResult,
   BattleState,
+  CardDef,
+  CardInstance,
   HeroDef,
   PlayerInit,
   PlayerState,
@@ -40,17 +42,33 @@ function buildHero(side: Side, init: PlayerInit['hero'], heroDb: Record<string, 
   };
 }
 
+/** 先锋：战斗开始时将带 `vanguard` 的卡移到牌库顶端（保持其相对顺序）。 */
+function placeVanguardOnTop(
+  deck: CardInstance[],
+  cardDb: Record<string, CardDef>,
+): CardInstance[] {
+  const vanguard: CardInstance[] = [];
+  const rest: CardInstance[] = [];
+  for (const card of deck) {
+    if (cardDb[card.defId]?.keywords?.includes('vanguard')) vanguard.push(card);
+    else rest.push(card);
+  }
+  return [...vanguard, ...rest];
+}
+
 function buildPlayerState(
   side: Side,
   init: PlayerInit,
   heroDb: Record<string, HeroDef>,
+  cardDb: Record<string, CardDef>,
   rng?: Rng,
 ): PlayerState {
-  const deck = init.deck.map((c) => ({ ...c }));
+  const copied = init.deck.map((c) => ({ ...c }));
+  const shuffled = rng ? shuffle(rng, copied) : copied;
   return {
     side,
     hero: buildHero(side, init.hero, heroDb),
-    deck: rng ? shuffle(rng, deck) : deck,
+    deck: placeVanguardOnTop(shuffled, cardDb),
     hand: [],
     board: [],
     discard: [],
@@ -66,8 +84,8 @@ export function createBattle(config: BattleInit, rng?: Rng): BattleState {
     turn: 1,
     activeSide: startingSide,
     phase: startingSide === 'enemy' ? 'enemyPlay' : 'playerPlay',
-    player: buildPlayerState('player', config.player, config.heroDb, rng),
-    enemy: buildPlayerState('enemy', config.enemy, config.heroDb, rng),
+    player: buildPlayerState('player', config.player, config.heroDb, config.cardDb, rng),
+    enemy: buildPlayerState('enemy', config.enemy, config.heroDb, config.cardDb, rng),
     winner: null,
     fieldEffect: null,
     hell: { intensity: 0 },

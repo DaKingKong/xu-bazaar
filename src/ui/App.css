@@ -657,6 +657,28 @@
   font-variant-numeric: tabular-nums;
 }
 
+.energy-boost {
+  margin-left: 0.15rem;
+  padding: 0.12rem 0.4rem;
+  font: inherit;
+  font-size: 0.72rem;
+  color: #c8d4e6;
+  background: #1a2740;
+  border: 1px solid #3a4f72;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.energy-boost:hover:not(:disabled) {
+  color: #e8eef8;
+  border-color: #63e6ff;
+}
+
+.energy-boost:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .midline__center {
   display: flex;
   align-items: center;

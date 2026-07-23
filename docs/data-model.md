@@ -47,6 +47,9 @@ interface CardDef {
 
   // 施法数：同一实例最多可打出次数（默认 1）；每次打出结算一次
   castCount?: number;
+
+  // 卡牌级词条（如先锋 vanguard）
+  keywords?: CardKeyword[];
 }
 
 // 卡牌实例（进入牌堆/手牌后的运行时实体）
@@ -75,6 +78,9 @@ interface TargetingRule {
 ```ts
 // 状态类词条（挂在仆从上，持续生效）
 type StatusKeyword = 'taunt'; // 嘲讽
+
+// 卡牌级词条（挂在 CardDef）
+type CardKeyword = 'vanguard'; // 先锋：战斗开始时置于牌库顶端
 
 // 条件类词条：满足条件时触发后续效果词条
 type TriggerKeyword = 'onKill'; // 击杀：造成的伤害击杀目标时触发
@@ -230,6 +236,7 @@ type BattleEvent =
 | 技能 | `HeroDef.skill` + `useSkill`；地狱术士已实现 | 更多英雄技能、AI 使用技能。 |
 | 场地效果 | `BattleState.fieldEffect` 占位 | 全局结算修正，作用于双方结算钩子。 |
 | 状态词条 | `taunt` | charge、divineShield 等。 |
+| 卡牌词条 | `vanguard`（先锋：createBattle 洗牌后置顶） | 破碎等流转类词条。 |
 | 条件/效果词条 | `onKill`（击杀）、`draw`（抽取 X） | 可挂到卡牌效果上复用同一套结算。 |
 
 ---

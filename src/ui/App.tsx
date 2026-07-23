@@ -13,7 +13,7 @@ import type {
   SkillDef,
   TargetRef,
 } from '../engine/types.ts';
-import { MAX_ENERGY, RITUAL_DEFS } from '../engine/types.ts';
+import { RITUAL_DEFS } from '../engine/types.ts';
 import './App.css';
 
 
@@ -420,14 +420,14 @@ function HandCard({
   );
 }
 
-function EnergyPips({ energy }: { energy: number }) {
+function EnergyPips({ energy, maxEnergy }: { energy: number; maxEnergy: number }) {
   return (
     <span className="energy">
-      {Array.from({ length: MAX_ENERGY }, (_, i) => (
+      {Array.from({ length: maxEnergy }, (_, i) => (
         <span key={i} className={`energy__pip${i < energy ? ' energy__pip--on' : ''}`} />
       ))}
       <span className="energy__text">
-        {energy}/{MAX_ENERGY}
+        {energy}/{maxEnergy}
       </span>
     </span>
   );
@@ -482,6 +482,7 @@ function App() {
   const castSkill = useBattleStore((s) => s.useSkill);
   const reorderMinion = useBattleStore((s) => s.reorderMinion);
   const endTurn = useBattleStore((s) => s.endTurn);
+  const setPlayerMaxEnergy = useBattleStore((s) => s.setPlayerMaxEnergy);
 
   useEffect(() => {
     if (!view) newGame();
@@ -730,7 +731,7 @@ function App() {
           <FieldStrip view={view} />
           <div className="midline__energy midline__energy--enemy">
             <span className="midline__side">敌</span>
-            <EnergyPips energy={view.enemy.energy} />
+            <EnergyPips energy={view.enemy.energy} maxEnergy={view.enemy.maxEnergy} />
           </div>
           <div className="midline__center">
             <span className={`turn-arrow turn-arrow--${view.activeSide}`} aria-hidden />
@@ -745,7 +746,16 @@ function App() {
           </div>
           <div className="midline__energy midline__energy--player">
             <span className="midline__side">我</span>
-            <EnergyPips energy={view.player.energy} />
+            <EnergyPips energy={view.player.energy} maxEnergy={view.player.maxEnergy} />
+            <button
+              type="button"
+              className="energy-boost"
+              title="将玩家费用上限永久改为 5，并立即回满"
+              disabled={view.player.maxEnergy >= 5}
+              onClick={() => setPlayerMaxEnergy(5)}
+            >
+              5费
+            </button>
           </div>
         </div>
 

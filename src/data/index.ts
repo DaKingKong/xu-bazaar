@@ -270,7 +270,8 @@ export const CARD_DEFS: CardDef[] = [
     type: 'spell',
     cost: 4,
     description:
-      '仪式占位（大型 2 格，生命 1）：友方仆从死亡时献祭 +1，领主回复 +2。献祭 9：召唤地狱兽凯斯提；每次执行生命 -1。',
+      '先锋。仪式占位（大型 2 格，生命 1）：友方仆从死亡时献祭 +1，领主回复 +2。献祭 9：召唤地狱兽凯斯提；每次执行生命 -1。',
+    keywords: ['vanguard'],
     effects: [{ type: 'ritual', ritualKey: 'hellBeast' }],
   },
 ];

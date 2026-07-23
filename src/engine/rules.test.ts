@@ -582,4 +582,36 @@ describe('英雄技能 / 词条', () => {
     expect(ids1).not.toBe(orderedIds);
     expect(ids1).not.toBe(ids2);
   });
+
+  it('createBattle：先锋卡在洗牌后置于牌库顶端', () => {
+    const deck = [
+      { id: 'ice', defId: 'minion-ice' },
+      { id: 'ritual', defId: 'spell-hell-beast-ritual' },
+      { id: 'flame', defId: 'minion-flame' },
+      { id: 'demon', defId: 'minion-demon' },
+    ];
+    expect(CARD_DB['spell-hell-beast-ritual']!.keywords).toContain('vanguard');
+
+    const noShuffle = createBattle({
+      player: { hero: { defId: HELL_WARLOCK_ID }, deck },
+      enemy: { hero: { defId: DUMMY_HERO_ID }, deck: [] },
+      cardDb: CARD_DB,
+      heroDb: HERO_DB,
+    });
+    expect(noShuffle.player.deck[0]!.id).toBe('ritual');
+
+    for (const seed of [1, 2, 7, 42, 99]) {
+      const s = createBattle(
+        {
+          player: { hero: { defId: HELL_WARLOCK_ID }, deck },
+          enemy: { hero: { defId: DUMMY_HERO_ID }, deck: [] },
+          cardDb: CARD_DB,
+          heroDb: HERO_DB,
+        },
+        makeRng(seed),
+      );
+      expect(s.player.deck[0]!.id).toBe('ritual');
+      expect(s.player.deck).toHaveLength(4);
+    }
+  });
 });
