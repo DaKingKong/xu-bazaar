@@ -10,7 +10,8 @@
 每个里程碑都有明确的完成定义（DoD），须逐一达成后再进入下一阶段。
 
 > **进度（2026-07）**：M1–M7 DoD 均已达成；§6 总验收清单亦已勾选。战斗日志（见
-> [battle-log.md](./battle-log.md)）已落地。后续工作见 README「待办」。
+> [battle-log.md](./battle-log.md)）已落地。默认对局已切换为目录卡地狱术士主题组（基础正文；
+> 规格见 `.scratch/catalog-deck-v1/spec.md`）。后续工作见 README「待办」。
 
 ### M1 — 项目骨架与类型 ✅
 - 搭建 Vite + React + TypeScript 项目，配置 Vitest、ESLint/Prettier。
@@ -79,6 +80,7 @@
 ```ts
 function createBattle(config: BattleInit, rng: Rng): BattleState;
 function playCard(state: BattleState, action: PlayCardAction, rng: Rng): { state: BattleState; events: BattleEvent[] };
+function useSkill(state: BattleState, action: UseSkillAction, rng: Rng): { state: BattleState; events: BattleEvent[] };
 function endTurn(state: BattleState, rng: Rng): { state: BattleState; events: BattleEvent[] };
 function runAutoBattle(state: BattleState, rng: Rng): { state: BattleState; events: BattleEvent[] };
 function runEnemyTurn(state: BattleState, rng: Rng): { state: BattleState; events: BattleEvent[] };
@@ -99,7 +101,7 @@ function runEnemyTurn(state: BattleState, rng: Rng): { state: BattleState; event
 ## 5. 动画事件消费约定
 
 - store 持有事件队列，按 `BattleEvent[]` **顺序**逐个播放。
-- 每个事件对应一种动画（draw/summon/attack/counter/death/heal/energyReset/phaseChange/gameOver）。
+- 每个事件对应一种动画（draw/summon/attack/counter/death/heal/energyReset/phaseChange/useSkill/gameOver）。
 - 播放期间可锁定交互，播放完毕后解锁并同步最终状态。
 - UI 只根据事件与最终状态渲染，不重新计算规则。
 

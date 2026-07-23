@@ -22,7 +22,8 @@ type TargetRef =
 ## 2. 卡牌
 
 ```ts
-type CardType = 'minion' | 'attack' | 'spell' | 'equipment';
+type CardType = 'minion' | 'attack' | 'spell';
+// 装备/武器不作为卡牌；见 Hero.equipmentSlot。
 
 // 卡牌原型（静态定义，存放在 data 层）
 interface CardDef {
@@ -43,9 +44,6 @@ interface CardDef {
 
   // 效果目标约束
   targeting?: TargetingRule;
-
-  // 装备卡（第一版仅预留）
-  equipment?: EquipmentDef;
 }
 
 // 卡牌实例（进入牌堆/手牌后的运行时实体）
@@ -67,10 +65,22 @@ interface TargetingRule {
 
 ---
 
-## 3. 仆从
+## 3. 仆从与词条
 
 ```ts
-type Keyword = 'taunt';      // 第一版仅嘲讽，后续可扩展 charge/divineShield 等
+// 状态类词条（挂在仆从上，持续生效）
+type StatusKeyword = 'taunt'; // 嘲讽
+
+// 条件类词条：满足条件时触发后续效果词条
+type TriggerKeyword = 'onKill'; // 击杀：造成的伤害击杀目标时触发
+
+// 效果类词条
+type EffectKeyword = { type: 'draw'; amount: number }; // 抽取 X 张牌
+
+interface TriggeredEffect {
+  trigger: TriggerKeyword;
+  effects: EffectKeyword[];
+}
 
 // 仆从原型
 interface MinionDef {
@@ -78,7 +88,7 @@ interface MinionDef {
   attack: number;
   hp: number;
   size: 1 | 2;               // 占格数，大型仆从为 2
-  keywords: Keyword[];
+  keywords: StatusKeyword[];
 }
 
 // 场上仆从实例
@@ -89,28 +99,51 @@ interface Minion {
   hp: number;               // 当前 HP
   maxHp: number;
   size: 1 | 2;
-  keywords: Keyword[];
+  keywords: StatusKeyword[];
   hasAttackedThisTurn?: boolean;
 }
 ```
 
 ---
 
-## 4. 角色（Hero）
+## 4. 英雄与技能
 
 ```ts
+interface SkillDef {
+  skillId: string;
+  name: string;
+  cost: number;
+  description: string;
+  damage?: number;
+  heal?: number;
+  targeting?: TargetingRule;
+  triggered?: TriggeredEffect[]; // 如击杀：抽取1
+}
+
+interface HeroDef {
+  defId: string;
+  name: string;
+  attack: number;
+  hp: number;
+  skill?: SkillDef | null;
+}
+
 interface Hero {
   side: Side;
+  defId: string;
+  name: string;
   attack: number;            // 角色攻击力（用于双向打脸反伤）
   hp: number;
   maxHp: number;
+  skillUsedThisTurn?: boolean; // 英雄技能每回合至多一次
 
-  // 第一版占位，仅预留
-  equipmentSlot?: EntityId | null;   // 装备槽
-  relics?: string[];                 // 遗物列表
-  skill?: string | null;             // 技能
+  // 装备/武器非卡牌，不进牌组（第一版 UI 占位）
+  equipmentSlot?: EntityId | null;
+  relics?: string[];
 }
 ```
+
+默认对局：玩家 `hell-warlock`（地狱术士），敌人 `dummy`（训练假人，无技能）。
 
 ---
 
@@ -152,8 +185,9 @@ interface BattleState {
 
   winner?: Side | null;      // 胜负判定，null/undefined 表示未结束
 
-  // 第一版占位
-  fieldEffect?: string | null;
+  fieldEffect?: string | null; // 第一版占位
+  cardDb: Record<string, CardDef>;
+  heroDb: Record<string, HeroDef>;
 }
 ```
 
@@ -169,6 +203,7 @@ type BattleEvent =
   | { type: 'drawSkipped'; side: Side }            // 手牌满跳过
   | { type: 'fatigue'; side: Side; damage: number; generatedAttack: number }
   | { type: 'playCard'; side: Side; cardId: EntityId; target?: TargetRef }
+  | { type: 'useSkill'; side: Side; skillId: string; target?: TargetRef }
   | { type: 'summon'; side: Side; minionId: EntityId; index: number } // 插入位置
   | { type: 'attack'; attacker: TargetRef; target: TargetRef; damage: number }
   | { type: 'counter'; unit: TargetRef; damage: number }             // 双向反伤
@@ -181,15 +216,16 @@ type BattleEvent =
 
 ---
 
-## 8. 装备/遗物/关键字扩展说明（预留）
+## 8. 装备/遗物/关键字扩展说明
 
 | 项 | 当前 | 未来扩展 |
 | --- | --- | --- |
-| 装备卡 | `CardDef.equipment` 预留、UI 占位 | engine 在攻击/受伤结算处预留钩子接入装备效果，`Hero.equipmentSlot` 承载实例。 |
+| 装备/武器 | 非卡牌；`Hero.equipmentSlot` 与 UI 占位 | 战斗外装载后注入 Hero；engine 在攻击/受伤结算处接钩子。 |
 | 遗物 | `Hero.relics` 字段占位 | 以事件钩子（如「回合开始」「造成伤害后」）触发遗物效果。 |
-| 技能 | `Hero.skill` 字段占位 | 主动技能消耗能量，接入出牌流程。 |
+| 技能 | `HeroDef.skill` + `useSkill`；地狱术士已实现 | 更多英雄技能、AI 使用技能。 |
 | 场地效果 | `BattleState.fieldEffect` 占位 | 全局结算修正，作用于双方结算钩子。 |
-| 关键字 | 仅 `taunt` | `Keyword` 联合类型扩展（charge、divineShield 等），在结算各阶段读取判定。 |
+| 状态词条 | `taunt` | charge、divineShield 等。 |
+| 条件/效果词条 | `onKill`（击杀）、`draw`（抽取 X） | 可挂到卡牌效果上复用同一套结算。 |
 
 ---
 
@@ -197,4 +233,4 @@ type BattleEvent =
 
 - **卡组注入**：战斗初始化接收敌我 `CardInstance[]` 卡组，卡组由战斗外系统（构筑/关卡）生成，engine 不关心来源。
 - **卡牌解锁**：data 层维护全量 `CardDef` 卡池与已解锁集合，构筑系统从已解锁集合选卡，与 engine 解耦。
-- **角色成长**：战斗外系统修改 `Hero` 基础属性（HP/攻击/装备/遗物）后注入战斗初始状态。
+- **角色成长**：战斗外系统修改 `Hero` 基础属性（HP/攻击/装备/遗物）或选择 `HeroDef` 后注入战斗初始状态。

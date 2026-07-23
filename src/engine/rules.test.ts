@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { CARD_DB, FATIGUE_STRIKE_DEF_ID, buildSampleDeck } from '../data/index.ts';
+import {
+  CARD_DB,
+  DUMMY_HERO_ID,
+  FATIGUE_STRIKE_DEF_ID,
+  HELL_WARLOCK_ID,
+  HERO_DB,
+  buildSampleDeck,
+} from '../data/index.ts';
 import { beginTurn, drawOne } from './draw.ts';
 import { damageMinion } from './helpers.ts';
 import { runAutoBattle } from './autoBattle.ts';
 import { chooseCombo } from './ai.ts';
 import { createBattle, endTurn, runEnemyTurn } from './battle.ts';
 import { playCard } from './play.ts';
+import { useSkill } from './skill.ts';
 import { makeRng } from './rng.ts';
 import type { BattleEvent, BattleState, CardInstance, Minion, PlayerState, Side } from './types.ts';
 
@@ -15,48 +23,58 @@ function mkMinion(
   id: string,
   attack: number,
   hp: number,
-  opts: { keywords?: Minion['keywords']; size?: 1 | 2; defId?: string } = {},
+  opts: { keywords?: Minion['keywords']; size?: 1 | 2; defId?: string; tags?: Minion['tags'] } = {},
 ): Minion {
   return {
     id,
-    defId: opts.defId ?? 'minion-striker',
+    defId: opts.defId ?? 'minion-flame',
     attack,
     hp,
     maxHp: hp,
     size: opts.size ?? 1,
     keywords: opts.keywords ?? [],
+    tags: opts.tags ?? [],
   };
 }
 
 interface PlayerOpts {
+  heroId?: string;
   heroAttack?: number;
   heroHp?: number;
   deck?: CardInstance[];
   hand?: CardInstance[];
   board?: Minion[];
+  discard?: CardInstance[];
   energy?: number;
   fatigue?: number;
+  skillUsed?: boolean;
 }
 
 function mkPlayer(side: Side, o: PlayerOpts = {}): PlayerState {
-  const hp = o.heroHp ?? 30;
+  const defId = o.heroId ?? DUMMY_HERO_ID;
+  const def = HERO_DB[defId]!;
+  const hp = o.heroHp ?? def.hp;
   return {
     side,
     hero: {
       side,
+      defId,
+      name: def.name,
       attack: o.heroAttack ?? 0,
       hp,
       maxHp: hp,
       equipmentSlot: null,
       relics: [],
-      skill: null,
+      skillUsedThisTurn: o.skillUsed ?? false,
     },
     deck: o.deck ?? [],
     hand: o.hand ?? [],
     board: o.board ?? [],
+    discard: o.discard ?? [],
     energy: o.energy ?? 4,
     maxEnergy: 4,
     fatigueCount: o.fatigue ?? 0,
+    rituals: [],
   };
 }
 
@@ -77,12 +95,15 @@ function mkState(o: StateOpts = {}): BattleState {
     enemy: o.enemy ?? mkPlayer('enemy'),
     winner: null,
     fieldEffect: null,
+    hell: { intensity: 0 },
     cardDb: CARD_DB,
+    heroDb: HERO_DB,
+    nextEntitySeq: 0,
   };
 }
 
 function deckOf(n: number): CardInstance[] {
-  return Array.from({ length: n }, (_, i) => ({ id: `d${i}`, defId: 'minion-recruit' }));
+  return Array.from({ length: n }, (_, i) => ({ id: `d${i}`, defId: 'minion-ice' }));
 }
 
 // --- M2：抽牌 / 能量 / 疲劳 ---
@@ -105,7 +126,7 @@ describe('M2 抽牌/能量/疲劳', () => {
   });
 
   it('手牌满(10)跳过抽牌，以单次抽牌统计（9→抽1满10→第2张跳过）', () => {
-    const hand = Array.from({ length: 9 }, (_, i) => ({ id: `h${i}`, defId: 'minion-recruit' }));
+    const hand = Array.from({ length: 9 }, (_, i) => ({ id: `h${i}`, defId: 'minion-ice' }));
     const s = mkState({ turn: 2, player: mkPlayer('player', { deck: deckOf(5), hand }) });
     const events: BattleEvent[] = [];
     beginTurn(s, 'player', events);
@@ -149,54 +170,68 @@ describe('M2 抽牌/能量/疲劳', () => {
 describe('M3 出牌', () => {
   it('召唤仆从插入到指定位置', () => {
     const board = [mkMinion('a', 1, 1), mkMinion('b', 1, 1)];
-    const hand: CardInstance[] = [{ id: 'c1', defId: 'minion-striker' }];
-    const s = mkState({ player: mkPlayer('player', { board, hand, energy: 4 }) });
+    const hand: CardInstance[] = [{ id: 'c1', defId: 'minion-scroll-cat' }];
+    const s = mkState({
+      player: mkPlayer('player', { board, hand, energy: 4, deck: deckOf(3) }),
+    });
     const { state } = playCard(s, { cardId: 'c1', position: 1 });
     expect(state.player.board.map((m) => m.id)).toEqual(['a', 'm_c1', 'b']);
-    expect(state.player.energy).toBe(4 - 3);
+    expect(state.player.energy).toBe(4 - 2);
   });
 
   it('直接攻击卡：有敌方仆从时只能选敌方仆从（打脸限制）', () => {
-    const hand: CardInstance[] = [{ id: 'atk', defId: 'attack-strike' }];
+    const hand: CardInstance[] = [
+      { id: 'atk', defId: FATIGUE_STRIKE_DEF_ID, overrideDamage: 2 },
+    ];
     const s = mkState({
       player: mkPlayer('player', { hand, energy: 4 }),
       enemy: mkPlayer('enemy', { board: [mkMinion('e1', 1, 5)] }),
     });
-    // 打脸非法
     expect(() => playCard(s, { cardId: 'atk', target: { kind: 'hero', side: 'enemy' } })).toThrow();
-    // 打仆从合法
     const { state } = playCard(s, {
       cardId: 'atk',
       target: { kind: 'minion', side: 'enemy', id: 'e1' },
     });
     expect(state.enemy.board[0].hp).toBe(5 - 2);
+    expect(state.player.discard.some((c) => c.id === 'atk')).toBe(true);
   });
 
   it('法术卡不受打脸限制，可自由指定角色', () => {
-    const hand: CardInstance[] = [{ id: 'fb', defId: 'spell-firebolt' }];
+    const hand: CardInstance[] = [{ id: 'fb', defId: 'spell-fireball' }];
     const s = mkState({
       player: mkPlayer('player', { hand, energy: 4 }),
       enemy: mkPlayer('enemy', { board: [mkMinion('e1', 1, 5)], heroHp: 30 }),
     });
     const { state } = playCard(s, { cardId: 'fb', target: { kind: 'hero', side: 'enemy' } });
-    expect(state.enemy.hero.hp).toBe(30 - 3);
+    expect(state.enemy.hero.hp).toBe(30 - 8);
+    expect(state.player.discard.some((c) => c.id === 'fb')).toBe(true);
   });
 
-  it('治疗法术恢复生命且不超过上限', () => {
-    const hand: CardInstance[] = [{ id: 'mend', defId: 'spell-mend' }];
-    const s = mkState({ player: mkPlayer('player', { hand, energy: 4, heroHp: 30 }) });
-    s.player.hero.hp = 29;
-    const { state } = playCard(s, { cardId: 'mend', target: { kind: 'hero', side: 'player' } });
-    expect(state.player.hero.hp).toBe(30);
+  it('灵光之盾：对仆从施法数 2 连续护盾+抽牌', () => {
+    const hand: CardInstance[] = [{ id: 'ag', defId: 'spell-aegis' }];
+    const s = mkState({
+      player: mkPlayer('player', {
+        hand,
+        energy: 4,
+        deck: deckOf(5),
+        board: [mkMinion('p1', 1, 3)],
+      }),
+    });
+    const { state } = playCard(s, {
+      cardId: 'ag',
+      target: { kind: 'minion', side: 'player', id: 'p1' },
+    });
+    expect(state.player.board[0]!.shield).toBe(8);
+    expect(state.player.hand).toHaveLength(2);
   });
 
   it('大型仆从占两格：7 格占满不可召唤', () => {
     const board = [
-      mkMinion('g1', 5, 6, { size: 2, defId: 'minion-golem' }),
-      mkMinion('g2', 5, 6, { size: 2, defId: 'minion-golem' }),
-      mkMinion('g3', 5, 6, { size: 2, defId: 'minion-golem' }),
-    ]; // usage 6，仅剩 1 格
-    const hand: CardInstance[] = [{ id: 'g4', defId: 'minion-golem' }];
+      mkMinion('g1', 2, 10, { size: 2, defId: 'minion-golem-guard', tags: ['large'] }),
+      mkMinion('g2', 2, 10, { size: 2, defId: 'minion-golem-guard', tags: ['large'] }),
+      mkMinion('g3', 2, 10, { size: 2, defId: 'minion-golem-guard', tags: ['large'] }),
+    ];
+    const hand: CardInstance[] = [{ id: 'g4', defId: 'minion-golem-guard' }];
     const s = mkState({ player: mkPlayer('player', { board, hand, energy: 4 }) });
     expect(() => playCard(s, { cardId: 'g4', position: 3 })).toThrow();
   });
@@ -289,9 +324,9 @@ describe('M3 自动战斗', () => {
 describe('M4 敌人 AI 组合搜索', () => {
   it('能恰好用光 4 能量则优先用光', () => {
     const hand: CardInstance[] = [
-      { id: 'c1', defId: 'minion-recruit' }, // cost 1
-      { id: 'c2', defId: 'minion-striker' }, // cost 3
-      { id: 'c3', defId: 'attack-strike' }, // cost 1
+      { id: 'c1', defId: 'minion-ice' }, // 1
+      { id: 'c2', defId: 'minion-golem-guard' }, // 3
+      { id: 'c3', defId: 'minion-flame' }, // 1
     ];
     for (let seed = 0; seed < 10; seed += 1) {
       const combo = chooseCombo(hand, CARD_DB, 4, makeRng(seed));
@@ -302,8 +337,8 @@ describe('M4 敌人 AI 组合搜索', () => {
 
   it('无法恰好用光时尽量多消耗', () => {
     const hand: CardInstance[] = [
-      { id: 'c1', defId: 'minion-striker' }, // cost 3
-      { id: 'c2', defId: 'minion-striker' }, // cost 3
+      { id: 'c1', defId: 'spell-fireball' }, // 3
+      { id: 'c2', defId: 'spell-fireball' }, // 3
     ];
     const combo = chooseCombo(hand, CARD_DB, 4, makeRng(1));
     const total = combo.reduce((sum, c) => sum + CARD_DB[c.defId].cost, 0);
@@ -311,7 +346,7 @@ describe('M4 敌人 AI 组合搜索', () => {
   });
 
   it('无可打出的卡返回空组合', () => {
-    const hand: CardInstance[] = [{ id: 'c1', defId: 'minion-golem' }]; // cost 4
+    const hand: CardInstance[] = [{ id: 'c1', defId: 'spell-demon-portal' }]; // 4
     const combo = chooseCombo(hand, CARD_DB, 1, makeRng(1));
     expect(combo).toHaveLength(0);
   });
@@ -324,9 +359,10 @@ describe('整局流程（含敌人回合）', () => {
     const rng = makeRng(42);
     let s = createBattle(
       {
-        player: { hero: { attack: 2, hp: 30 }, deck: buildSampleDeck('p') },
-        enemy: { hero: { attack: 2, hp: 30 }, deck: buildSampleDeck('e') },
+        player: { hero: { defId: HELL_WARLOCK_ID }, deck: buildSampleDeck('p') },
+        enemy: { hero: { defId: DUMMY_HERO_ID }, deck: buildSampleDeck('e') },
         cardDb: CARD_DB,
+        heroDb: HERO_DB,
       },
       rng,
     );
@@ -340,28 +376,65 @@ describe('整局流程（含敌人回合）', () => {
       let progressed = true;
       while (progressed && s.phase === 'playerPlay') {
         progressed = false;
-        const playable = s.player.hand.find((c) => s.cardDb[c.defId].cost <= s.player.energy);
+        const playable = s.player.hand.find((c) => {
+          const def = s.cardDb[c.defId];
+          if (!def || def.cost > s.player.energy) return false;
+          if (def.targeting?.needsDiscard && s.player.discard.length === 0) return false;
+          if (def.effects?.some((e) => e.type === 'destroyTarget') && s.player.board.length === 0)
+            return false;
+          return true;
+        });
         if (playable) {
           const def = s.cardDb[playable.defId];
           try {
             if (def.type === 'minion') {
               s = playCard(s, { cardId: playable.id, position: s.player.board.length }).state;
-            } else if (def.heal != null) {
+            } else if (def.targeting?.needsDiscard) {
+              const disc = s.player.discard[0]!;
+              const chosenDef = s.cardDb[disc.defId];
+              let target = undefined;
+              if (chosenDef?.targeting?.needsTarget) {
+                if (chosenDef.targeting.side === 'ally') {
+                  target =
+                    s.player.board.length > 0
+                      ? { kind: 'minion' as const, side: 'player' as const, id: s.player.board[0]!.id }
+                      : { kind: 'hero' as const, side: 'player' as const };
+                } else {
+                  target =
+                    s.enemy.board.length > 0
+                      ? { kind: 'minion' as const, side: 'enemy' as const, id: s.enemy.board[0]!.id }
+                      : { kind: 'hero' as const, side: 'enemy' as const };
+                }
+              }
               s = playCard(s, {
                 cardId: playable.id,
-                target: { kind: 'hero', side: 'player' },
+                discardCardId: disc.id,
+                target,
               }).state;
-            } else {
+            } else if (def.targeting?.needsTarget && def.targeting.side === 'ally') {
+              const target =
+                s.player.board.length > 0
+                  ? { kind: 'minion' as const, side: 'player' as const, id: s.player.board[0]!.id }
+                  : { kind: 'hero' as const, side: 'player' as const };
+              if (!def.targeting.allowHero && target.kind === 'hero') throw new Error('skip');
+              s = playCard(s, { cardId: playable.id, target }).state;
+            } else if (def.targeting?.needsTarget) {
               const enemyBoard = s.enemy.board;
               const target =
                 enemyBoard.length > 0
-                  ? { kind: 'minion' as const, side: 'enemy' as const, id: enemyBoard[0].id }
+                  ? { kind: 'minion' as const, side: 'enemy' as const, id: enemyBoard[0]!.id }
                   : { kind: 'hero' as const, side: 'enemy' as const };
               s = playCard(s, { cardId: playable.id, target }).state;
+            } else {
+              s = playCard(s, { cardId: playable.id }).state;
             }
             progressed = true;
           } catch {
-            progressed = false;
+            // 移出手牌失败项：跳过本张，避免死循环
+            s = structuredClone(s);
+            const idx = s.player.hand.findIndex((c) => c.id === playable.id);
+            if (idx >= 0) s.player.hand.splice(idx, 1);
+            progressed = s.player.hand.some((c) => s.cardDb[c.defId].cost <= s.player.energy);
           }
         }
       }
@@ -372,5 +445,80 @@ describe('整局流程（含敌人回合）', () => {
 
     expect(s.phase).toBe('ended');
     expect(s.winner === 'player' || s.winner === 'enemy').toBe(true);
+  });
+});
+
+// --- 英雄技能与词条 ---
+
+describe('英雄技能 / 词条', () => {
+  it('地狱术士技能：2 费造成 2 伤害，未击杀不抽牌', () => {
+    const s = mkState({
+      player: mkPlayer('player', {
+        heroId: HELL_WARLOCK_ID,
+        energy: 4,
+        deck: deckOf(3),
+      }),
+      enemy: mkPlayer('enemy', { board: [mkMinion('e1', 1, 5)] }),
+    });
+    const res = useSkill(s, { target: { kind: 'minion', side: 'enemy', id: 'e1' } });
+    expect(res.state.player.energy).toBe(2);
+    expect(res.state.player.hero.skillUsedThisTurn).toBe(true);
+    expect(res.state.enemy.board[0]!.hp).toBe(3);
+    expect(res.state.player.hand).toHaveLength(0);
+    expect(res.events.some((e) => e.type === 'useSkill')).toBe(true);
+    expect(res.events.some((e) => e.type === 'draw')).toBe(false);
+  });
+
+  it('击杀词条：伤害击杀目标时抽取 1', () => {
+    const s = mkState({
+      player: mkPlayer('player', {
+        heroId: HELL_WARLOCK_ID,
+        energy: 4,
+        deck: deckOf(3),
+      }),
+      enemy: mkPlayer('enemy', { board: [mkMinion('e1', 1, 2)] }),
+    });
+    const res = useSkill(s, { target: { kind: 'minion', side: 'enemy', id: 'e1' } });
+    expect(res.state.enemy.board).toHaveLength(0);
+    expect(res.state.player.hand).toHaveLength(1);
+    expect(res.events.some((e) => e.type === 'death')).toBe(true);
+    expect(res.events.some((e) => e.type === 'draw')).toBe(true);
+  });
+
+  it('每回合只能使用一次技能', () => {
+    const s = mkState({
+      player: mkPlayer('player', {
+        heroId: HELL_WARLOCK_ID,
+        energy: 4,
+        skillUsed: true,
+      }),
+      enemy: mkPlayer('enemy', { board: [mkMinion('e1', 1, 5)] }),
+    });
+    expect(() =>
+      useSkill(s, { target: { kind: 'minion', side: 'enemy', id: 'e1' } }),
+    ).toThrow(/already used/);
+  });
+
+  it('训练假人无技能', () => {
+    const s = mkState({
+      player: mkPlayer('player', { heroId: DUMMY_HERO_ID, energy: 4 }),
+      enemy: mkPlayer('enemy', { board: [mkMinion('e1', 1, 5)] }),
+    });
+    expect(() =>
+      useSkill(s, { target: { kind: 'minion', side: 'enemy', id: 'e1' } }),
+    ).toThrow(/no skill/);
+  });
+
+  it('createBattle：玩家地狱术士、敌人训练假人', () => {
+    const s = createBattle({
+      player: { hero: { defId: HELL_WARLOCK_ID }, deck: [] },
+      enemy: { hero: { defId: DUMMY_HERO_ID }, deck: [] },
+      cardDb: CARD_DB,
+      heroDb: HERO_DB,
+    });
+    expect(s.player.hero.name).toBe('地狱术士');
+    expect(s.enemy.hero.name).toBe('训练假人');
+    expect(HERO_DB[s.player.hero.defId]!.skill?.cost).toBe(2);
+    expect(HERO_DB[s.enemy.hero.defId]!.skill).toBeNull();
   });
 });

@@ -14,6 +14,7 @@ import type {
   BattleInit,
   BattleResult,
   BattleState,
+  HeroDef,
   PlayerInit,
   PlayerState,
   Rng,
@@ -21,24 +22,39 @@ import type {
 } from './types.ts';
 import { MAX_ENERGY } from './types.ts';
 
-function buildPlayerState(side: Side, init: PlayerInit): PlayerState {
+function buildHero(side: Side, init: PlayerInit['hero'], heroDb: Record<string, HeroDef>) {
+  const def = heroDb[init.defId];
+  if (!def) throw new Error(`unknown hero def: ${init.defId}`);
+  const hp = init.hp ?? def.hp;
   return {
     side,
-    hero: {
-      side,
-      attack: init.hero.attack,
-      hp: init.hero.hp,
-      maxHp: init.hero.hp,
-      equipmentSlot: null,
-      relics: [],
-      skill: null,
-    },
+    defId: def.defId,
+    name: def.name,
+    attack: init.attack ?? def.attack,
+    hp,
+    maxHp: hp,
+    equipmentSlot: null as string | null,
+    relics: [] as string[],
+    skillUsedThisTurn: false,
+  };
+}
+
+function buildPlayerState(
+  side: Side,
+  init: PlayerInit,
+  heroDb: Record<string, HeroDef>,
+): PlayerState {
+  return {
+    side,
+    hero: buildHero(side, init.hero, heroDb),
     deck: init.deck.map((c) => ({ ...c })),
     hand: [],
     board: [],
+    discard: [],
     energy: 0,
     maxEnergy: MAX_ENERGY,
     fatigueCount: 0,
+    rituals: [],
   };
 }
 
@@ -48,11 +64,14 @@ export function createBattle(config: BattleInit, _rng?: Rng): BattleState {
     turn: 1,
     activeSide: startingSide,
     phase: startingSide === 'enemy' ? 'enemyPlay' : 'playerPlay',
-    player: buildPlayerState('player', config.player),
-    enemy: buildPlayerState('enemy', config.enemy),
+    player: buildPlayerState('player', config.player, config.heroDb),
+    enemy: buildPlayerState('enemy', config.enemy, config.heroDb),
     winner: null,
     fieldEffect: null,
+    hell: { intensity: 0 },
     cardDb: config.cardDb,
+    heroDb: config.heroDb,
+    nextEntitySeq: 0,
   };
 }
 

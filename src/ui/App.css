@@ -212,15 +212,19 @@
 }
 
 /* --- 角色区 --- */
+/* 英雄本身水平居中；技能/遗物绝对定位在英雄两侧，不参与居中计算 */
 .hero-area {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1.25rem;
-  position: relative;
 }
 
 .relics {
+  position: absolute;
+  right: calc(50% + 3.75rem);
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -347,10 +351,48 @@
 }
 
 .skill {
-  padding: 0.4rem 0.6rem;
+  position: absolute;
+  left: calc(50% + 3.75rem);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 4.2rem;
+  padding: 0.4rem 0.55rem;
   border-radius: 8px;
-  font-size: 0.75rem;
+  border: 1px solid #6a5040;
+  background: linear-gradient(160deg, #4a382c, #2a2018);
+  color: #f0e6d8;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.skill:hover:not(:disabled) {
+  border-color: #b88858;
+}
+
+.skill--pending {
+  border-color: #d4a574;
+  box-shadow: 0 0 0 1px #d4a574;
+}
+
+.skill--disabled,
+.skill:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
+}
+
+.skill__cost {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #9ecbff;
+}
+
+.skill__name {
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .card__stats {

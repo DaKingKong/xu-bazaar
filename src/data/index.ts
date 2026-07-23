@@ -1,122 +1,340 @@
-// 静态卡牌/仆从定义数据。
-//
-// data 层与 engine 解耦：engine 通过 defId 引用原型，运行期原型表（CardDb）
-// 随 BattleState 一并携带（见 docs/architecture.md §2.2、docs/data-model.md §9）。
+// 静态卡牌/仆从/英雄定义数据（目录基础正文 + 血战机制卡）。
 
 import type { CardDef, CardInstance } from '../engine/types.ts';
 
-// 疲劳机制生成的「直接攻击卡」原型 ID。
-// 基础 damage 为 0，实际攻击力由实例的 overrideDamage 覆盖（每次疲劳递增 1）。
-export const FATIGUE_STRIKE_DEF_ID = 'fatigue-strike';
+export {
+  DUMMY_HERO,
+  DUMMY_HERO_ID,
+  HELL_WARLOCK,
+  HELL_WARLOCK_ID,
+  HERO_DB,
+  HERO_DEFS,
+} from './heroes.ts';
 
-// 指向性直接攻击卡的通用目标规则：需选目标、可打脸、受打脸/嘲讽限制、只指向敌方。
+/** 疲劳机制生成的直接攻击卡（血战）。 */
+export const FATIGUE_STRIKE_DEF_ID = 'blood-war';
+
 const ATTACK_TARGETING = {
   needsTarget: true,
   allowHero: true,
   respectTaunt: true,
-  side: 'enemy',
-} as const;
+  side: 'enemy' as const,
+};
 
-// 全量卡牌原型定义。
+const ANY_TARGET = {
+  needsTarget: true,
+  allowHero: true,
+  respectTaunt: false,
+  side: 'any' as const,
+};
+
+const ALLY_MINION = {
+  needsTarget: true,
+  allowHero: false,
+  respectTaunt: false,
+  side: 'ally' as const,
+};
+
+const ALLY_ANY = {
+  needsTarget: true,
+  allowHero: true,
+  respectTaunt: false,
+  side: 'ally' as const,
+};
+
 export const CARD_DEFS: CardDef[] = [
-  {
-    defId: 'minion-guard',
-    name: '铁壁守卫',
-    type: 'minion',
-    cost: 2,
-    description: '嘲讽。为你的仆从阵线挡下攻击。',
-    minion: { name: '铁壁守卫', attack: 1, hp: 4, size: 1, keywords: ['taunt'] },
-  },
-  {
-    defId: 'minion-striker',
-    name: '突击兵',
-    type: 'minion',
-    cost: 3,
-    description: '一个攻守均衡的仆从。',
-    minion: { name: '突击兵', attack: 3, hp: 3, size: 1, keywords: [] },
-  },
-  {
-    defId: 'minion-recruit',
-    name: '新兵',
-    type: 'minion',
-    cost: 1,
-    description: '廉价的前排消耗品。',
-    minion: { name: '新兵', attack: 1, hp: 2, size: 1, keywords: [] },
-  },
-  {
-    defId: 'minion-golem',
-    name: '巨型魔像',
-    type: 'minion',
-    cost: 4,
-    description: '大型仆从，占据两格。',
-    minion: { name: '巨型魔像', attack: 5, hp: 6, size: 2, keywords: [] },
-  },
-  {
-    defId: 'attack-strike',
-    name: '快速斩击',
-    type: 'attack',
-    cost: 1,
-    description: '造成 2 点伤害。需先清空对方仆从才能打脸。',
-    damage: 2,
-    targeting: ATTACK_TARGETING,
-  },
-  {
-    defId: 'spell-firebolt',
-    name: '火焰箭',
-    type: 'spell',
-    cost: 1,
-    description: '造成 3 点伤害（可自由选目标）。',
-    damage: 3,
-    targeting: { needsTarget: true, allowHero: true, respectTaunt: false, side: 'any' },
-  },
-  {
-    defId: 'spell-mend',
-    name: '治疗术',
-    type: 'spell',
-    cost: 1,
-    description: '恢复 3 点生命。',
-    heal: 3,
-    targeting: { needsTarget: true, allowHero: true, respectTaunt: false, side: 'ally' },
-  },
+  // --- 机制 ---
   {
     defId: FATIGUE_STRIKE_DEF_ID,
-    name: '疲劳突袭',
+    name: '血战',
     type: 'attack',
     cost: 0,
     description: '疲劳生成的直接攻击卡，攻击力随疲劳递增。',
     damage: 0,
     targeting: ATTACK_TARGETING,
   },
+
+  // --- 仆从 ---
+  {
+    defId: 'minion-ice',
+    name: '冰晶人',
+    type: 'minion',
+    cost: 1,
+    description: '廉价的冰系仆从。',
+    minion: { name: '冰晶人', attack: 1, hp: 3, size: 1, keywords: [] },
+  },
+  {
+    defId: 'minion-flame',
+    name: '火焰人',
+    type: 'minion',
+    cost: 1,
+    description: '廉价的火系仆从。',
+    minion: { name: '火焰人', attack: 3, hp: 1, size: 1, keywords: [] },
+  },
+  {
+    defId: 'minion-golem-guard',
+    name: '石像守卫',
+    type: 'minion',
+    cost: 3,
+    description: '嘲讽。大型。',
+    minion: {
+      name: '石像守卫',
+      attack: 2,
+      hp: 10,
+      size: 2,
+      keywords: ['taunt'],
+      tags: ['large'],
+    },
+  },
+  {
+    defId: 'minion-demon',
+    name: '恶魔',
+    type: 'minion',
+    cost: 2,
+    description: '入场：召唤 1 名小恶魔。',
+    minion: {
+      name: '恶魔',
+      attack: 2,
+      hp: 3,
+      size: 1,
+      keywords: [],
+      tags: ['hell'],
+    },
+    onEnter: [{ type: 'summon', defId: 'token-imp-demon' }],
+  },
+  {
+    defId: 'minion-scroll-cat',
+    name: '书卷猫',
+    type: 'minion',
+    cost: 2,
+    description: '入场：抽取 1。',
+    minion: { name: '书卷猫', attack: 2, hp: 2, size: 1, keywords: [] },
+    onEnter: [{ type: 'draw', amount: 1 }],
+  },
+
+  // --- Token ---
+  {
+    defId: 'token-imp-portal',
+    name: '小恶魔',
+    type: 'minion',
+    cost: 1,
+    description: '恶魔传送门的召唤物。',
+    minion: {
+      name: '小恶魔',
+      attack: 1,
+      hp: 2,
+      size: 1,
+      keywords: [],
+      tags: ['hell'],
+    },
+  },
+  {
+    defId: 'token-imp-demon',
+    name: '小恶魔',
+    type: 'minion',
+    cost: 1,
+    description: '恶魔的召唤物。',
+    minion: {
+      name: '小恶魔',
+      attack: 1,
+      hp: 2,
+      size: 1,
+      keywords: [],
+      tags: ['hell'],
+    },
+  },
+  {
+    defId: 'token-demon-summon',
+    name: '恶魔',
+    type: 'minion',
+    cost: 2,
+    description: '恶魔召唤的召唤物。',
+    minion: {
+      name: '恶魔',
+      attack: 2,
+      hp: 3,
+      size: 1,
+      keywords: [],
+      tags: ['hell'],
+    },
+  },
+  {
+    defId: 'token-kest',
+    name: '地狱兽凯斯提',
+    type: 'minion',
+    cost: 10,
+    description: '入场：场地变为地狱。若场地为地狱，吸血 5。',
+    minion: {
+      name: '地狱兽凯斯提',
+      attack: 10,
+      hp: 30,
+      size: 2,
+      keywords: [],
+      tags: ['large', 'hell'],
+    },
+  },
+
+  // --- 法术 ---
+  {
+    defId: 'spell-fireball',
+    name: '火球术',
+    type: 'spell',
+    cost: 3,
+    description: '对目标造成 8 伤害。',
+    castCount: 1,
+    targeting: ANY_TARGET,
+    effects: [{ type: 'damage', amount: 8 }],
+  },
+  {
+    defId: 'spell-aegis',
+    name: '灵光之盾',
+    type: 'spell',
+    cost: 2,
+    description: '目标护盾 +4，抽取 1。（施法数 2：对同一目标连续生效 2 次）',
+    castCount: 2,
+    targeting: ALLY_ANY,
+    effects: [
+      { type: 'shield', amount: 4 },
+      { type: 'draw', amount: 1 },
+    ],
+  },
+  {
+    defId: 'spell-death-flow',
+    name: '死亡流转',
+    type: 'spell',
+    cost: 1,
+    description: '消灭 1 名友方仆从，抽取目标费用数量的卡牌。',
+    targeting: ALLY_MINION,
+    effects: [{ type: 'destroyTarget' }, { type: 'drawByTargetCost' }],
+  },
+  {
+    defId: 'spell-haste-infusion',
+    name: '神速灌注',
+    type: 'spell',
+    cost: 2,
+    description: '目标获得多重攻击 +1。',
+    targeting: ALLY_MINION,
+    effects: [{ type: 'grantMultiAttack', amount: 1 }],
+  },
+  {
+    defId: 'spell-claw-infusion',
+    name: '利爪灌注',
+    type: 'spell',
+    cost: 3,
+    description: '目标仆从获得溅射。',
+    targeting: ALLY_MINION,
+    effects: [{ type: 'grantSplash' }],
+  },
+  {
+    defId: 'spell-demon-summon',
+    name: '恶魔召唤',
+    type: 'spell',
+    cost: 3,
+    description: '召唤 1 名恶魔，并赋予重生 +1。',
+    effects: [{ type: 'summon', defId: 'token-demon-summon', rebirth: 1 }],
+  },
+  {
+    defId: 'spell-curse-blast',
+    name: '诅咒爆破',
+    type: 'spell',
+    cost: 3,
+    description: '使所有敌方仆从本回合受到 2 倍伤害，并对所有敌人造成 2 伤害。',
+    effects: [{ type: 'aoeDamageEnemies', amount: 2 }, { type: 'fragileEnemyMinions' }],
+  },
+  {
+    defId: 'spell-nether-pull',
+    name: '冥界牵引',
+    type: 'spell',
+    cost: 3,
+    description: '从弃牌堆中指定 1 张卡牌免费用使用。',
+    targeting: {
+      needsTarget: false,
+      allowHero: false,
+      respectTaunt: false,
+      side: 'any',
+      needsDiscard: true,
+    },
+    effects: [{ type: 'replayDiscard' }],
+  },
+  {
+    defId: 'spell-demon-portal',
+    name: '恶魔传送门',
+    type: 'spell',
+    cost: 4,
+    description: '仪式：仆从死亡时献祭 +1。献祭 5：召唤 1 名小恶魔。',
+    effects: [{ type: 'ritual', ritualKey: 'demonPortal' }],
+  },
+  {
+    defId: 'spell-hell-beast-ritual',
+    name: '地狱兽仪式',
+    type: 'spell',
+    cost: 2,
+    description: '仪式：友方仆从死亡时献祭 +1，领主回复 +2。献祭 7：召唤地狱兽凯斯提。',
+    effects: [{ type: 'ritual', ritualKey: 'hellBeast' }],
+  },
 ];
 
-// 运行期原型表：defId -> CardDef。
 export const CARD_DB: Record<string, CardDef> = Object.fromEntries(
   CARD_DEFS.map((c) => [c.defId, c]),
 );
 
-// 向后兼容的示例集合（骨架期占位 UI 曾使用）。
 export const SAMPLE_CARDS: CardDef[] = CARD_DEFS.filter((c) => c.defId !== FATIGUE_STRIKE_DEF_ID);
 
-// 构建一副示例卡组（有序，抽牌从顶部 index 0 取）。
-// prefix 用于生成唯一的实例 id，确保敌我实例 id 不冲突。
-export function buildSampleDeck(prefix: string): CardInstance[] {
+/** 玩家地狱术士主题组（含地狱兽仪式）。 */
+export function buildPlayerHellDeck(prefix: string): CardInstance[] {
   const recipe: string[] = [
-    'minion-recruit',
-    'minion-guard',
-    'attack-strike',
-    'minion-striker',
-    'spell-firebolt',
-    'minion-recruit',
-    'spell-mend',
-    'minion-guard',
-    'attack-strike',
-    'minion-golem',
-    'minion-striker',
-    'spell-firebolt',
-    'minion-recruit',
-    'attack-strike',
-    'spell-mend',
-    'minion-striker',
+    'minion-ice',
+    'minion-ice',
+    'minion-flame',
+    'minion-flame',
+    'minion-scroll-cat',
+    'minion-scroll-cat',
+    'minion-demon',
+    'minion-demon',
+    'minion-golem-guard',
+    'spell-fireball',
+    'spell-fireball',
+    'spell-aegis',
+    'spell-death-flow',
+    'spell-haste-infusion',
+    'spell-claw-infusion',
+    'spell-demon-summon',
+    'spell-demon-portal',
+    'spell-hell-beast-ritual',
+    'spell-curse-blast',
+    'spell-nether-pull',
   ];
   return recipe.map((defId, i) => ({ id: `${prefix}-${i}-${defId}`, defId }));
+}
+
+/** 敌人主题组：无地狱兽仪式，多一张石像守卫。 */
+export function buildEnemyHellDeck(prefix: string): CardInstance[] {
+  const recipe: string[] = [
+    'minion-ice',
+    'minion-ice',
+    'minion-flame',
+    'minion-flame',
+    'minion-scroll-cat',
+    'minion-scroll-cat',
+    'minion-demon',
+    'minion-demon',
+    'minion-golem-guard',
+    'minion-golem-guard',
+    'spell-fireball',
+    'spell-fireball',
+    'spell-aegis',
+    'spell-death-flow',
+    'spell-haste-infusion',
+    'spell-claw-infusion',
+    'spell-demon-summon',
+    'spell-demon-portal',
+    'spell-curse-blast',
+    'spell-nether-pull',
+  ];
+  return recipe.map((defId, i) => ({ id: `${prefix}-${i}-${defId}`, defId }));
+}
+
+/** @deprecated 使用 buildPlayerHellDeck / buildEnemyHellDeck */
+export function buildSampleDeck(prefix: string): CardInstance[] {
+  return prefix.startsWith('e') ? buildEnemyHellDeck(prefix) : buildPlayerHellDeck(prefix);
 }

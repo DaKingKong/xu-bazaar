@@ -6,7 +6,15 @@
 //   播放完毕后与权威状态对齐。UI 只读取 view 与事件，不重新计算规则。
 
 import { create } from 'zustand';
-import { CARD_DB, FATIGUE_STRIKE_DEF_ID, buildSampleDeck } from '../data/index.ts';
+import {
+  CARD_DB,
+  DUMMY_HERO_ID,
+  FATIGUE_STRIKE_DEF_ID,
+  HELL_WARLOCK_ID,
+  HERO_DB,
+  buildEnemyHellDeck,
+  buildPlayerHellDeck,
+} from '../data/index.ts';
 import {
   createBattle,
   endTurn as engineEndTurn,
@@ -15,8 +23,16 @@ import {
   runAutoBattle,
   runEnemyTurn,
   sideState,
+  useSkill as engineUseSkill,
 } from '../engine/index.ts';
-import type { BattleEvent, BattleState, PlayCardAction, Rng, TargetRef } from '../engine/types.ts';
+import type {
+  BattleEvent,
+  BattleState,
+  PlayCardAction,
+  Rng,
+  TargetRef,
+  UseSkillAction,
+} from '../engine/types.ts';
 import { LOG_CAP, formatLog } from './formatLog.ts';
 import type { LogEntry } from './formatLog.ts';
 
@@ -30,6 +46,7 @@ const EVENT_DELAY: Partial<Record<BattleEvent['type'], number>> = {
   drawSkipped: 120,
   fatigue: 400,
   playCard: 260,
+  useSkill: 260,
   summon: 260,
   attack: 880,
   counter: 760,
@@ -89,6 +106,13 @@ function applyEventToView(view: BattleState, ev: BattleEvent, authoritative: Bat
       }
       break;
     }
+    case 'useSkill': {
+      const ps = sideState(view, ev.side);
+      const skill = view.heroDb[ps.hero.defId]?.skill;
+      if (skill) ps.energy = Math.max(0, ps.energy - skill.cost);
+      ps.hero.skillUsedThisTurn = true;
+      break;
+    }
     case 'summon': {
       const src = sideState(authoritative, ev.side).board.find((m) => m.id === ev.minionId);
       if (src) {
@@ -115,6 +139,33 @@ function applyEventToView(view: BattleState, ev: BattleEvent, authoritative: Bat
     case 'heal': {
       const target = findTargetHpHolder(view, ev.target);
       if (target) target.hp = Math.min(target.maxHp, target.hp + ev.amount);
+      break;
+    }
+    case 'discard': {
+      const ps = sideState(view, ev.side);
+      const src = sideState(authoritative, ev.side).discard.find((c) => c.id === ev.cardId);
+      if (src && !ps.discard.some((c) => c.id === ev.cardId)) {
+        ps.discard.push(clone(src));
+      }
+      break;
+    }
+    case 'hellChange':
+      view.hell = { intensity: ev.intensity };
+      break;
+    case 'ritualUpdate': {
+      const ps = sideState(view, ev.side);
+      const authRitual = sideState(authoritative, ev.side).rituals.find((r) => r.id === ev.ritualId);
+      const existing = ps.rituals.find((r) => r.id === ev.ritualId);
+      if (existing) existing.sacrifice = ev.sacrifice;
+      else if (authRitual) ps.rituals.push(clone(authRitual));
+      break;
+    }
+    case 'shield': {
+      if (ev.target.kind === 'minion') {
+        const target = ev.target;
+        const m = sideState(view, target.side).board.find((x) => x.id === target.id);
+        if (m) m.shield = (m.shield ?? 0) + ev.amount;
+      }
       break;
     }
     case 'gameOver':
@@ -145,12 +196,19 @@ interface BattleStoreState {
   anim: CombatAnim | null;
   // 受伤飘字列表（可同时存在多个）；动画结束后由 UI 通过 clearFloater 清除。
   floaters: FloaterState[];
-  // 玩家正在选择目标/位置的待出牌（UI 用）。
-  pending: { cardId: string } | null;
+  // 玩家正在选择目标/位置的待出牌，或待使用技能（UI 用）。
+  // discardPick：冥界牵引先选手牌后选弃牌；再视情况选目标。
+  pending:
+    | { kind: 'card'; cardId: string }
+    | { kind: 'skill' }
+    | { kind: 'discardPick'; cardId: string }
+    | { kind: 'discardTarget'; cardId: string; discardCardId: string }
+    | null;
 
   newGame: (seed?: number) => void;
-  setPending: (cardId: string | null) => void;
+  setPending: (pending: BattleStoreState['pending']) => void;
   playCard: (action: PlayCardAction) => void;
+  useSkill: (action: UseSkillAction) => void;
   reorderMinion: (fromIndex: number, toIndex: number) => void;
   endTurn: () => void;
   clearFloater: (id: number) => void;
@@ -222,9 +280,10 @@ export const useBattleStore = create<BattleStoreState>((set, get) => {
       rng = makeRng(seed ?? Date.now() >>> 0);
       const initial = createBattle(
         {
-          player: { hero: { attack: 2, hp: 30 }, deck: buildSampleDeck('p') },
-          enemy: { hero: { attack: 2, hp: 30 }, deck: buildSampleDeck('e') },
+          player: { hero: { defId: HELL_WARLOCK_ID }, deck: buildPlayerHellDeck('p') },
+          enemy: { hero: { defId: DUMMY_HERO_ID }, deck: buildEnemyHellDeck('e') },
           cardDb: CARD_DB,
+          heroDb: HERO_DB,
         },
         rng,
       );
@@ -245,13 +304,25 @@ export const useBattleStore = create<BattleStoreState>((set, get) => {
       enqueue(res.events, res.state);
     },
 
-    setPending: (cardId: string | null) => set({ pending: cardId ? { cardId } : null }),
+    setPending: (pending) => set({ pending }),
 
     playCard: (action: PlayCardAction) => {
       const { playing } = get();
       if (playing || !authoritative || authoritative.phase !== 'playerPlay') return;
       try {
         const res = enginePlayCard(authoritative, action, rng);
+        set({ pending: null });
+        enqueue(res.events, res.state);
+      } catch {
+        set({ pending: null });
+      }
+    },
+
+    useSkill: (action: UseSkillAction) => {
+      const { playing } = get();
+      if (playing || !authoritative || authoritative.phase !== 'playerPlay') return;
+      try {
+        const res = engineUseSkill(authoritative, action, rng);
         set({ pending: null });
         enqueue(res.events, res.state);
       } catch {

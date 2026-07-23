@@ -30,7 +30,10 @@ function targetsEqual(a: TargetRef, b: TargetRef): boolean {
 
 function cardName(state: BattleState, side: Side, cardId: string): string {
   const ps = sideState(state, side);
-  const inst = ps.hand.find((c) => c.id === cardId) ?? ps.deck.find((c) => c.id === cardId);
+  const inst =
+    ps.hand.find((c) => c.id === cardId) ??
+    ps.deck.find((c) => c.id === cardId) ??
+    ps.discard.find((c) => c.id === cardId);
   if (!inst) return '未知卡牌';
   return state.cardDb[inst.defId]?.name ?? '未知卡牌';
 }
@@ -90,24 +93,8 @@ export function formatLog(
       };
     }
 
-    case 'draw':
-      return {
-        text: `${who(ev.side)}抽到了「${cardName(view, ev.side, ev.cardId)}」`,
-        kind: 'resource',
-        side: ev.side,
-        sourceEvent: ev.type,
-      };
-
-    case 'drawSkipped':
-      return {
-        text: `${who(ev.side)}手牌已满，跳过抽牌`,
-        kind: 'resource',
-        side: ev.side,
-        sourceEvent: ev.type,
-      };
-
     case 'fatigue': {
-      const fatigueName = view.cardDb['fatigue-strike']?.name ?? '疲劳突袭';
+      const fatigueName = view.cardDb['blood-war']?.name ?? '血战';
       return {
         text: `${who(ev.side)}疲劳：受到 ${ev.damage} 点伤害，获得「${fatigueName}」（${ev.generatedAttack} 攻）`,
         kind: 'fatigue',
@@ -118,6 +105,19 @@ export function formatLog(
 
     case 'playCard': {
       let text = `${who(ev.side)}打出「${cardName(view, ev.side, ev.cardId)}」`;
+      if (ev.target) text += `，目标：${unitLabel(view, ev.target)}`;
+      return {
+        text,
+        kind: 'play',
+        side: ev.side,
+        sourceEvent: ev.type,
+      };
+    }
+
+    case 'useSkill': {
+      const skillName =
+        view.heroDb[sideState(view, ev.side).hero.defId]?.skill?.name ?? '英雄技能';
+      let text = `${who(ev.side)}使用技能「${skillName}」`;
       if (ev.target) text += `，目标：${unitLabel(view, ev.target)}`;
       return {
         text,
@@ -172,6 +172,12 @@ export function formatLog(
         side: ev.winner,
         sourceEvent: ev.type,
       };
+
+    case 'discard':
+    case 'ritualUpdate':
+    case 'hellChange':
+    case 'shield':
+      return null;
 
     default:
       return null;

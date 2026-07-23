@@ -1,32 +1,37 @@
-// M3（自动战斗部分）：场上仆从自动结算。
-// 见 docs/battle-design.md §8、§9。
+// 自动战斗：场上仆从自动结算 + 回合末地狱/清场效果。
 
 import { pick } from './rng.ts';
 import {
+  clearEndOfRoundEffects,
   damageHero,
   damageMinion,
   heroRef,
   isEnded,
+  maybeLifesteal,
   minionRef,
   otherSide,
+  resolveHellTick,
   sideState,
   tauntsOf,
 } from './helpers.ts';
 import type { BattleEvent, BattleResult, BattleState, Minion, Rng, Side } from './types.ts';
 
-// 从目标方场上按嘲讽优先规则随机选取一个仆从：
-// 有嘲讽仆从则只能在嘲讽中随机；否则在全部仆从中随机。使用实时存活列表。
 function chooseTargetMinion(board: Minion[], rng: Rng): Minion {
   const taunts = tauntsOf(board);
   const pool = taunts.length > 0 ? taunts : board;
   return pick(rng, pool);
 }
 
-// 单个仆从的一次攻击结算。
-// 所有攻击均为「双向结算」：攻击方与被攻击方都会受到等同于对方攻击力的伤害。
-// 仆从互打时伤害为「同时结算」——先各自读取对方攻击力，再一并扣血，
-// 因此不会因先手把对方打死而少挨伤害（除非未来引入「先攻」类词条）。
-function resolveMinionAttack(
+function adjacentMinionIds(board: Minion[], targetId: string): string[] {
+  const idx = board.findIndex((m) => m.id === targetId);
+  if (idx < 0) return [];
+  const ids: string[] = [];
+  if (idx > 0) ids.push(board[idx - 1]!.id);
+  if (idx < board.length - 1) ids.push(board[idx + 1]!.id);
+  return ids;
+}
+
+function resolveOneSwing(
   state: BattleState,
   attackerSide: Side,
   attackerId: string,
@@ -34,21 +39,21 @@ function resolveMinionAttack(
   events: BattleEvent[],
 ): void {
   if (isEnded(state)) return;
-  const attackerPS = sideState(state, attackerSide);
-  const attacker = attackerPS.board.find((m) => m.id === attackerId);
-  if (!attacker) return; // 已在本阶段死亡/移除
-  if (attacker.attack === 0) return; // 攻击力 0 跳过
+  const attacker = sideState(state, attackerSide).board.find((m) => m.id === attackerId);
+  if (!attacker) return;
+  if (attacker.attack === 0) return;
 
   const defSide = otherSide(attackerSide);
   const defBoard = sideState(state, defSide).board;
+  const lifestealOpts = { fromLifestealSource: { side: attackerSide, minionId: attackerId } };
 
   if (defBoard.length > 0) {
-    // 攻击敌方仆从：双向、同时结算。
     const target = chooseTargetMinion(defBoard, rng);
-    // 先读取两侧攻击力快照，避免任一方先死导致伤害缺失。
     const attackerDamage = attacker.attack;
     const targetDamage = target.attack;
     const targetId = target.id;
+    const splash = attacker.keywords.includes('splash');
+    const adj = splash ? adjacentMinionIds(defBoard, targetId) : [];
 
     events.push({
       type: 'attack',
@@ -56,7 +61,6 @@ function resolveMinionAttack(
       target: minionRef(defSide, targetId),
       damage: attackerDamage,
     });
-    // 被攻击方对攻击方的同时反伤。
     if (targetDamage > 0) {
       events.push({
         type: 'counter',
@@ -64,13 +68,19 @@ function resolveMinionAttack(
         damage: targetDamage,
       });
     }
-    // 同时扣血：两笔伤害都基于攻击前快照。
-    damageMinion(state, defSide, targetId, attackerDamage, events);
+    damageMinion(state, defSide, targetId, attackerDamage, events, lifestealOpts);
     damageMinion(state, attackerSide, attacker.id, targetDamage, events);
+
+    if (splash && !isEnded(state)) {
+      for (const adjId of adj) {
+        if (isEnded(state)) break;
+        if (!sideState(state, defSide).board.some((m) => m.id === adjId)) continue;
+        damageMinion(state, defSide, adjId, attackerDamage, events, lifestealOpts);
+      }
+    }
     return;
   }
 
-  // 打脸：目标方无仆从，攻击对方角色，双向结算。
   const defHero = sideState(state, defSide).hero;
   events.push({
     type: 'attack',
@@ -79,8 +89,8 @@ function resolveMinionAttack(
     damage: attacker.attack,
   });
   damageHero(state, defSide, attacker.attack, events);
+  maybeLifesteal(state, attackerSide, attackerId, events);
 
-  // 反伤：攻击方仆从受到等于对方角色攻击力的伤害。
   if (defHero.attack > 0) {
     events.push({
       type: 'counter',
@@ -91,17 +101,31 @@ function resolveMinionAttack(
   }
 }
 
-function resolveSideAttacks(state: BattleState, side: Side, rng: Rng, events: BattleEvent[]): void {
-  // 快照攻击者顺序（左至右）；死亡即时影响后续目标选取，但攻击顺序固定。
-  const order = sideState(state, side).board.map((m) => m.id);
-  for (const id of order) {
+function resolveMinionAttacks(
+  state: BattleState,
+  attackerSide: Side,
+  attackerId: string,
+  rng: Rng,
+  events: BattleEvent[],
+): void {
+  const attacker = sideState(state, attackerSide).board.find((m) => m.id === attackerId);
+  if (!attacker) return;
+  const swings = 1 + (attacker.multiAttack ?? 0);
+  for (let i = 0; i < swings; i += 1) {
     if (isEnded(state)) return;
-    resolveMinionAttack(state, side, id, rng, events);
+    if (!sideState(state, attackerSide).board.some((m) => m.id === attackerId)) return;
+    resolveOneSwing(state, attackerSide, attackerId, rng, events);
   }
 }
 
-// 自动战斗阶段：玩家仆从由左至右轮流攻击，随后敌方仆从攻击。
-// 任一角色 HP 归零立即结束（即时判定）。若无胜负，回合数 +1，进入下一回合的敌人打牌阶段。
+function resolveSideAttacks(state: BattleState, side: Side, rng: Rng, events: BattleEvent[]): void {
+  const order = sideState(state, side).board.map((m) => m.id);
+  for (const id of order) {
+    if (isEnded(state)) return;
+    resolveMinionAttacks(state, side, id, rng, events);
+  }
+}
+
 export function runAutoBattle(state: BattleState, rng: Rng): BattleResult {
   const s = structuredClone(state);
   const events: BattleEvent[] = [];
@@ -111,6 +135,9 @@ export function runAutoBattle(state: BattleState, rng: Rng): BattleResult {
 
   resolveSideAttacks(s, 'player', rng, events);
   if (!isEnded(s)) resolveSideAttacks(s, 'enemy', rng, events);
+
+  if (!isEnded(s)) resolveHellTick(s, events);
+  if (!isEnded(s)) clearEndOfRoundEffects(s);
 
   if (!isEnded(s)) {
     s.turn += 1;

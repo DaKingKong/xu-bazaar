@@ -41,11 +41,12 @@ export function drawOne(state: BattleState, side: Side, events: BattleEvent[]): 
   events.push({ type: 'draw', side, cardId: card.id });
 }
 
-// 回合开始处理：能量重置为 4，随后抽牌（首回合 5 张，之后 2 张）。
+// 回合开始处理：能量重置为 4，重置技能使用标记，随后抽牌（首回合 5 张，之后 2 张）。
 export function beginTurn(state: BattleState, side: Side, events: BattleEvent[]): void {
   if (isEnded(state)) return;
   const ps = sideState(state, side);
   ps.energy = MAX_ENERGY;
+  ps.hero.skillUsedThisTurn = false;
   events.push({ type: 'energyReset', side, value: MAX_ENERGY });
 
   const drawCount = state.turn === 1 ? FIRST_TURN_DRAW : PER_TURN_DRAW;

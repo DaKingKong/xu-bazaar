@@ -3,13 +3,14 @@ import { AnimatePresence, Reorder, motion } from 'framer-motion';
 import type { Transition } from 'framer-motion';
 import { useBattleStore } from '../store/battleStore.ts';
 import type { CombatAnim, FloaterState, LogEntry } from '../store/battleStore.ts';
-import { legalTargets } from '../engine/index.ts';
+import { heroSkillDef, legalTargets } from '../engine/index.ts';
 import type {
   BattleState,
   CardDef,
   CardInstance,
   Minion,
   Side,
+  SkillDef,
   TargetRef,
 } from '../engine/types.ts';
 import { MAX_ENERGY } from '../engine/types.ts';
@@ -133,25 +134,36 @@ function DamageFloaters({ match }: { match: (f: FloaterState) => boolean }) {
   );
 }
 
-// --- 角色区（含遗物/技能占位；牌库在战场角落，见 scene）---
+// --- 角色区（含遗物占位；技能可交互；牌库在战场角落，见 scene）---
 function HeroArea({
   view,
   side,
   selectable,
   anim,
+  skillInteractive,
+  skillPending,
   onSelect,
+  onSkillClick,
 }: {
   view: BattleState;
   side: Side;
   selectable: boolean;
   anim: CombatAnim | null;
+  skillInteractive: boolean;
+  skillPending: boolean;
   onSelect: (ref: TargetRef) => void;
+  onSkillClick: () => void;
 }) {
   const ps = side === 'player' ? view.player : view.enemy;
-  const label = side === 'player' ? '玩家' : '敌人';
+  const skill = heroSkillDef(view, side);
   const relics = ps.hero.relics ?? [];
   // 角色永远不是自动战斗的攻击方（只有仆从会攻击）；仅在受击时做后退受创反应。
   const isHit = anim?.target?.kind === 'hero' && anim.target.side === side;
+  const skillDisabled =
+    !skillInteractive ||
+    !skill ||
+    ps.energy < skill.cost ||
+    !!ps.hero.skillUsedThisTurn;
   return (
     <div className={`hero-area hero-area--${side}`}>
       {/* 遗物列表（第一版占位）：无遗物则不显示 */}
@@ -171,7 +183,7 @@ function HeroArea({
         animate={{ scale: isHit ? HERO_HIT_SCALE : 1 }}
         transition={isHit ? HIT_TRANSITION : { duration: 0.2 }}
       >
-        <span className="hero__label">{label}</span>
+        <span className="hero__label">{ps.hero.name}</span>
         <span className="hero__avatar" aria-hidden />
         <span className="badge badge--atk stat stat--atk">{ps.hero.attack}</span>
         <span className="badge badge--hp stat stat--hp">{ps.hero.hp}</span>
@@ -182,10 +194,19 @@ function HeroArea({
         />
       </motion.button>
 
-      {/* 技能按钮（第一版占位） */}
-      <button type="button" className="skill placeholder" disabled aria-label="技能（占位）">
-        技能
-      </button>
+      {skill && (
+        <button
+          type="button"
+          className={`skill${skillPending ? ' skill--pending' : ''}${skillDisabled ? ' skill--disabled' : ''}`}
+          disabled={skillDisabled && !skillPending}
+          title={`${skill.name}（${skill.cost} 费）\n${skill.description}`}
+          aria-label={`${skill.name}：${skill.description}`}
+          onClick={onSkillClick}
+        >
+          <span className="skill__cost">{skill.cost}</span>
+          <span className="skill__name">{skill.name}</span>
+        </button>
+      )}
     </div>
   );
 }
@@ -198,7 +219,7 @@ function MinionInner({ view, minion }: { view: BattleState; minion: Minion }) {
       <span className="minion__name">{def?.name ?? minion.defId}</span>
       <span className="badge badge--atk stat stat--atk">{minion.attack}</span>
       <span className="badge badge--hp stat stat--hp">{minion.hp}</span>
-      {minion.keywords.includes('taunt') && <span className="badge badge--taunt">嗤讻</span>}
+      {minion.keywords.includes('taunt') && <span className="badge badge--taunt">嘲讽</span>}
     </>
   );
 }
@@ -397,6 +418,7 @@ function App() {
   const newGame = useBattleStore((s) => s.newGame);
   const setPending = useBattleStore((s) => s.setPending);
   const playCard = useBattleStore((s) => s.playCard);
+  const castSkill = useBattleStore((s) => s.useSkill);
   const reorderMinion = useBattleStore((s) => s.reorderMinion);
   const endTurn = useBattleStore((s) => s.endTurn);
 
@@ -407,40 +429,108 @@ function App() {
   if (!view) return null;
 
   const isPlayerTurn = view.phase === 'playerPlay' && !playing && !view.winner;
-  const pendingCard = pending ? view.player.hand.find((c) => c.id === pending.cardId) : null;
+  const pendingCardId =
+    pending?.kind === 'card' || pending?.kind === 'discardPick' || pending?.kind === 'discardTarget'
+      ? pending.cardId
+      : null;
+  const pendingCard = pendingCardId
+    ? view.player.hand.find((c) => c.id === pendingCardId)
+    : null;
   const pendingDef: CardDef | null = pendingCard ? view.cardDb[pendingCard.defId] : null;
-  const isPlacing = isPlayerTurn && pendingDef?.type === 'minion';
-  const isTargeting = isPlayerTurn && !!pendingDef?.targeting?.needsTarget;
-  // 只有玩家回合、且未处于选目标/放置、且场上有仆从时，才开启拖拽重排。
-  const canReorder = isPlayerTurn && !isTargeting && !isPlacing && view.player.board.length > 1;
+  const pendingSkill: SkillDef | null =
+    pending?.kind === 'skill' ? heroSkillDef(view, 'player') : null;
+
+  const discardReplayDef: CardDef | null =
+    pending?.kind === 'discardTarget'
+      ? view.cardDb[view.player.discard.find((c) => c.id === pending.discardCardId)?.defId ?? ''] ??
+        null
+      : null;
+
+  const targetingDef =
+    discardReplayDef?.targeting?.needsTarget
+      ? discardReplayDef
+      : pending?.kind === 'card' || pending?.kind === 'skill'
+        ? (pendingDef ?? pendingSkill)
+        : null;
+
+  const isPlacing = isPlayerTurn && pending?.kind === 'card' && pendingDef?.type === 'minion';
+  const isDiscardPick = isPlayerTurn && pending?.kind === 'discardPick';
+  const isTargeting = isPlayerTurn && !!targetingDef?.targeting?.needsTarget;
+  const canReorder =
+    isPlayerTurn && !isTargeting && !isPlacing && !isDiscardPick && view.player.board.length > 1;
   const legal: TargetRef[] =
-    isTargeting && pendingDef ? legalTargets(view, 'player', pendingDef) : [];
+    isTargeting && targetingDef ? legalTargets(view, 'player', targetingDef) : [];
 
   const isLegalTarget = (ref: TargetRef) => legal.some((t) => targetsEqual(t, ref));
 
   const onSelectTarget = (ref: TargetRef) => {
-    if (!isTargeting || !pendingCard || !isLegalTarget(ref)) return;
-    playCard({ cardId: pendingCard.id, target: ref });
+    if (!isTargeting || !isLegalTarget(ref)) return;
+    if (pending?.kind === 'skill') {
+      castSkill({ target: ref });
+      return;
+    }
+    if (pending?.kind === 'discardTarget') {
+      playCard({
+        cardId: pending.cardId,
+        discardCardId: pending.discardCardId,
+        target: ref,
+      });
+      return;
+    }
+    if (pendingCard) playCard({ cardId: pendingCard.id, target: ref });
+  };
+
+  const onClickDiscardCard = (discardCardId: string) => {
+    if (!isDiscardPick || !pending || pending.kind !== 'discardPick') return;
+    const chosen = view.player.discard.find((c) => c.id === discardCardId);
+    if (!chosen) return;
+    const chosenDef = view.cardDb[chosen.defId];
+    if (chosenDef?.targeting?.needsTarget) {
+      setPending({ kind: 'discardTarget', cardId: pending.cardId, discardCardId });
+      return;
+    }
+    playCard({ cardId: pending.cardId, discardCardId });
   };
 
   const onClickHandCard = (card: CardInstance) => {
     if (!isPlayerTurn) return;
     const def = view.cardDb[card.defId];
     if (!def || view.player.energy < def.cost) return;
-    if (pending?.cardId === card.id) {
+    if (pendingCardId === card.id) {
       setPending(null);
+      return;
+    }
+    if (def.targeting?.needsDiscard) {
+      if (view.player.discard.length === 0) return;
+      setPending({ kind: 'discardPick', cardId: card.id });
       return;
     }
     if (def.type === 'minion') {
       if (view.player.board.length === 0) {
         playCard({ cardId: card.id, position: 0 });
       } else {
-        setPending(card.id);
+        setPending({ kind: 'card', cardId: card.id });
       }
     } else if (def.targeting?.needsTarget) {
-      setPending(card.id);
+      setPending({ kind: 'card', cardId: card.id });
     } else {
       playCard({ cardId: card.id });
+    }
+  };
+
+  const onSkillClick = () => {
+    if (!isPlayerTurn) return;
+    const skill = heroSkillDef(view, 'player');
+    if (!skill) return;
+    if (pending?.kind === 'skill') {
+      setPending(null);
+      return;
+    }
+    if (view.player.energy < skill.cost || view.player.hero.skillUsedThisTurn) return;
+    if (skill.targeting?.needsTarget) {
+      setPending({ kind: 'skill' });
+    } else {
+      castSkill({});
     }
   };
 
@@ -546,7 +636,10 @@ function App() {
           side="enemy"
           selectable={isTargeting && isLegalTarget({ kind: 'hero', side: 'enemy' })}
           anim={anim}
+          skillInteractive={false}
+          skillPending={false}
           onSelect={onSelectTarget}
+          onSkillClick={() => {}}
         />
 
         <section className="board board--enemy" aria-label="敌人仆从区">
@@ -570,10 +663,19 @@ function App() {
 
         <div className="midline">
           <div
-            className="field-effect placeholder"
-            title="场地效果（占位）"
-            aria-label="场地效果（占位）"
-          />
+            className="field-effect"
+            title="场地效果"
+            aria-label="场地效果"
+          >
+            {view.hell.intensity > 0 ? `地狱×${view.hell.intensity}` : '场地'}
+            {view.player.rituals.length > 0 && (
+              <span className="field-effect__rituals">
+                {' '}
+                仪式
+                {view.player.rituals.map((r) => `${r.ritualKey[0]}${r.sacrifice}`).join(' ')}
+              </span>
+            )}
+          </div>
           <div className="midline__energy midline__energy--enemy">
             <span className="midline__side">敌</span>
             <EnergyPips energy={view.enemy.energy} />
@@ -611,7 +713,10 @@ function App() {
           side="player"
           selectable={isTargeting && isLegalTarget({ kind: 'hero', side: 'player' })}
           anim={anim}
+          skillInteractive={isPlayerTurn}
+          skillPending={pending?.kind === 'skill'}
           onSelect={onSelectTarget}
+          onSkillClick={onSkillClick}
         />
 
         <section className="hand" aria-label="玩家手牌">
@@ -622,19 +727,38 @@ function App() {
                 view={view}
                 card={c}
                 disabled={!isPlayerTurn}
-                active={pending?.cardId === c.id}
+                active={pendingCardId === c.id}
                 onClick={() => onClickHandCard(c)}
               />
             ))}
           </AnimatePresence>
           {view.player.hand.length === 0 && <span className="board__empty">（无手牌）</span>}
         </section>
+
+        {isDiscardPick && (
+          <section className="hand hand--discard" aria-label="弃牌堆选用">
+            {view.player.discard.map((c) => (
+              <HandCard
+                key={c.id}
+                view={view}
+                card={c}
+                disabled={false}
+                active={false}
+                onClick={() => onClickDiscardCard(c.id)}
+              />
+            ))}
+          </section>
+        )}
         </main>
       </div>
 
-      {(isPlacing || isTargeting) && (
+      {(isPlacing || isTargeting || isDiscardPick) && (
         <div className="hint">
-          {isPlacing ? '选择召唤位置（点击插入点）' : '选择目标'}
+          {isDiscardPick
+            ? '从弃牌堆选择一张卡使用'
+            : isPlacing
+              ? '选择召唤位置（点击插入点）'
+              : '选择目标'}
           <button type="button" className="hint__cancel" onClick={() => setPending(null)}>
             取消
           </button>
