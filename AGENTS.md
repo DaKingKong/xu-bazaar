@@ -13,8 +13,8 @@ stay in hand until casts are exhausted (each hand play costs energy), shields, r
 multi-attack, splash, and related keywords; 冥界牵引 returns a discard card to hand and
 plays it once for free (remaining casts may stay in hand); Zustand store bridge with event
 playback; playable battle UI (including discard pick for 冥界牵引) with Framer Motion; left-side
-battle log. Default heroes: player **地狱术士**, enemy **训练假人** (no skill; enemy deck omits
-地狱兽仪式). Equipment / relics remain UI placeholders. Card upgrades, growth, unlocks, and
+battle log. Default heroes: player **地狱术士**, enemy **训练假人** (no skill; enemy deck is
+demon + golem guards only). Equipment / relics remain UI placeholders. Card upgrades, growth, unlocks, and
 deckbuilding are out of scope for v1 — see `README.md` and `docs/implementation-plan.md`.
 
 ### Services

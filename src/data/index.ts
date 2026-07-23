@@ -308,29 +308,33 @@ export function buildPlayerHellDeck(prefix: string): CardInstance[] {
   return recipe.map((defId, i) => ({ id: `${prefix}-${i}-${defId}`, defId }));
 }
 
-/** 敌人主题组：无地狱兽仪式，多一张石像守卫。 */
+/** 敌人主题组：仅恶魔与石像守卫（无仪式/法术）。 */
 export function buildEnemyHellDeck(prefix: string): CardInstance[] {
   const recipe: string[] = [
-    'minion-ice',
-    'minion-ice',
-    'minion-flame',
-    'minion-flame',
-    'minion-scroll-cat',
-    'minion-scroll-cat',
     'minion-demon',
     'minion-demon',
     'minion-golem-guard',
     'minion-golem-guard',
-    'spell-fireball',
-    'spell-fireball',
-    'spell-aegis',
-    'spell-death-flow',
-    'spell-haste-infusion',
-    'spell-claw-infusion',
-    'spell-demon-summon',
-    'spell-demon-portal',
-    'spell-curse-blast',
-    'spell-nether-pull',
+    'minion-demon',
+    'minion-demon',
+    'minion-golem-guard',
+    'minion-golem-guard',
+    'minion-demon',
+    'minion-demon',
+    'minion-golem-guard',
+    'minion-golem-guard',
+    'minion-demon',
+    'minion-demon',
+    'minion-golem-guard',
+    'minion-golem-guard',
+    'minion-demon',
+    'minion-demon',
+    'minion-golem-guard',
+    'minion-golem-guard',
+    'minion-demon',
+    'minion-demon',
+    'minion-golem-guard',
+    'minion-golem-guard',
   ];
   return recipe.map((defId, i) => ({ id: `${prefix}-${i}-${defId}`, defId }));
 }
