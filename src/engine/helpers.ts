@@ -31,6 +31,35 @@ export function combatMinions(board: Minion[]): Minion[] {
   return board.filter((m) => !isRitual(m));
 }
 
+/** 仪式占位（棋盘右侧区）。 */
+export function ritualMinions(board: Minion[]): Minion[] {
+  return board.filter(isRitual);
+}
+
+/**
+ * 第一个仪式下标；无仪式时为 board.length。
+ * 不变量：board = [...combatMinions, ...ritualMinions]。
+ */
+export function firstRitualIndex(board: Minion[]): number {
+  const i = board.findIndex(isRitual);
+  return i < 0 ? board.length : i;
+}
+
+/** 将 board 规范为「仆从在左、仪式在右」，各组内相对顺序不变。 */
+export function normalizeBoardOrder(board: Minion[]): Minion[] {
+  return [...combatMinions(board), ...ritualMinions(board)];
+}
+
+/**
+ * 参战仆从插入下标：夹到仪式区之前。
+ * `position == null` → 插在仪式区正前方（最右参战位）。
+ */
+export function clampCombatInsertIndex(board: Minion[], position?: number): number {
+  const end = firstRitualIndex(board);
+  if (position == null) return end;
+  return Math.max(0, Math.min(position, end));
+}
+
 export function boardUsage(board: Minion[]): number {
   return board.reduce((sum, m) => sum + m.size, 0);
 }

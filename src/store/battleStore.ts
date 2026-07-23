@@ -18,7 +18,10 @@ import {
 import {
   createBattle,
   endTurn as engineEndTurn,
+  firstRitualIndex,
+  isRitual,
   makeRng,
+  normalizeBoardOrder,
   playCard as enginePlayCard,
   runAutoBattle,
   runEnemyTurn,
@@ -35,6 +38,8 @@ import type {
 } from '../engine/types.ts';
 import { LOG_CAP, formatLog } from './formatLog.ts';
 import type { LogEntry } from './formatLog.ts';
+import { applyViewCombatDamage } from './viewCombatDamage.ts';
+import { applyViewSummon } from './viewSummon.ts';
 
 export type { LogEntry } from './formatLog.ts';
 
@@ -115,20 +120,17 @@ function applyEventToView(view: BattleState, ev: BattleEvent, authoritative: Bat
       break;
     }
     case 'summon': {
-      const src = sideState(authoritative, ev.side).board.find((m) => m.id === ev.minionId);
-      if (src) {
-        sideState(view, ev.side).board.splice(ev.index, 0, clone(src));
-      }
+      applyViewSummon(view, authoritative, ev);
       break;
     }
     case 'attack': {
       const target = findTargetHpHolder(view, ev.target);
-      if (target) target.hp -= ev.damage;
+      if (target) applyViewCombatDamage(target, ev.damage);
       break;
     }
     case 'counter': {
       const unit = findTargetHpHolder(view, ev.unit);
-      if (unit) unit.hp -= ev.damage;
+      if (unit) applyViewCombatDamage(unit, ev.damage);
       break;
     }
     case 'death': {
@@ -209,6 +211,8 @@ export interface FloaterState {
 interface BattleStoreState {
   view: BattleState | null;
   playing: boolean;
+  /** 动画事件播放倍速（越大越快）。 */
+  playbackSpeed: 1 | 2 | 3;
   log: LogEntry[];
   // 当前正在播放的战斗动画（攻击/反伤）标记；无则为 null。
   anim: CombatAnim | null;
@@ -228,9 +232,12 @@ interface BattleStoreState {
   playCard: (action: PlayCardAction) => void;
   useSkill: (action: UseSkillAction) => void;
   reorderMinion: (fromIndex: number, toIndex: number) => void;
+  /** 设置玩家 board 全序；须保持「仆从在左、仪式在右」。 */
+  setPlayerBoardOrder: (orderedIds: string[]) => void;
   endTurn: () => void;
   /** 调试：将玩家费用上限永久改为给定值，并立即回满。 */
   setPlayerMaxEnergy: (max: number) => void;
+  setPlaybackSpeed: (speed: 1 | 2 | 3) => void;
   clearFloater: (id: number) => void;
 }
 
@@ -277,7 +284,7 @@ export const useBattleStore = create<BattleStoreState>((set, get) => {
         ? [...s.log.slice(-(LOG_CAP - 1)), { id: (logSeq += 1), ...fields }]
         : s.log,
     }));
-    const delay = EVENT_DELAY[ev.type] ?? 200;
+    const delay = (EVENT_DELAY[ev.type] ?? 200) / get().playbackSpeed;
     setTimeout(pump, delay);
   }
 
@@ -291,6 +298,7 @@ export const useBattleStore = create<BattleStoreState>((set, get) => {
   return {
     view: null,
     playing: false,
+    playbackSpeed: 1,
     log: [],
     anim: null,
     floaters: [],
@@ -350,9 +358,7 @@ export const useBattleStore = create<BattleStoreState>((set, get) => {
       }
     },
 
-    // 玩家阶段拖拽重排己方仆从：仅改变 board 顺序，不结算、不耗能。
-    // 纯排序不产生战斗事件，直接同步更新权威状态与展示状态，
-    // 自动战斗（由左至右）随即读取拖拽后的新顺序。
+    // 玩家阶段拖拽重排：仅同区移动（仆从区 / 仪式区），不可把仪式拖进仆从之间。
     reorderMinion: (fromIndex: number, toIndex: number) => {
       const { playing } = get();
       if (playing || !authoritative || authoritative.phase !== 'playerPlay') return;
@@ -366,10 +372,38 @@ export const useBattleStore = create<BattleStoreState>((set, get) => {
       ) {
         return;
       }
+      const firstR = firstRitualIndex(board);
+      const fromRitual = fromIndex >= firstR;
+      const toRitual = toIndex >= firstR;
+      if (fromRitual !== toRitual) return;
+
       const next = clone(authoritative);
       const arr = next.player.board;
       const [moved] = arr.splice(fromIndex, 1);
-      arr.splice(toIndex, 0, moved);
+      arr.splice(toIndex, 0, moved!);
+      next.player.board = normalizeBoardOrder(arr);
+      authoritative = next;
+      set({ view: clone(next) });
+    },
+
+    setPlayerBoardOrder: (orderedIds: string[]) => {
+      const { playing } = get();
+      if (playing || !authoritative || authoritative.phase !== 'playerPlay') return;
+      const board = authoritative.player.board;
+      if (orderedIds.length !== board.length) return;
+      if (new Set(orderedIds).size !== orderedIds.length) return;
+      const byId = new Map(board.map((m) => [m.id, m]));
+      if (!orderedIds.every((id) => byId.has(id))) return;
+
+      const nextOrder = orderedIds.map((id) => byId.get(id)!);
+      let seenRitual = false;
+      for (const m of nextOrder) {
+        if (isRitual(m)) seenRitual = true;
+        else if (seenRitual) return;
+      }
+
+      const next = clone(authoritative);
+      next.player.board = nextOrder.map((m) => clone(m));
       authoritative = next;
       set({ view: clone(next) });
     },
@@ -411,6 +445,8 @@ export const useBattleStore = create<BattleStoreState>((set, get) => {
       }
       set({ view: view ?? clone(next) });
     },
+
+    setPlaybackSpeed: (speed) => set({ playbackSpeed: speed }),
 
     clearFloater: (id: number) => set((s) => ({ floaters: s.floaters.filter((f) => f.id !== id) })),
   };

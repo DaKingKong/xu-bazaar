@@ -288,7 +288,7 @@ export type BattleEvent =
   | { type: 'fatigue'; side: Side; damage: number; generatedAttack: number }
   | { type: 'playCard'; side: Side; cardId: EntityId; target?: TargetRef }
   | { type: 'useSkill'; side: Side; skillId: string; target?: TargetRef }
-  | { type: 'summon'; side: Side; minionId: EntityId; index: number }
+  | { type: 'summon'; side: Side; minionId: EntityId; index: number; defId: string }
   | { type: 'attack'; attacker: TargetRef; target: TargetRef; damage: number }
   | { type: 'counter'; unit: TargetRef; damage: number }
   | { type: 'death'; side: Side; minionId: EntityId }

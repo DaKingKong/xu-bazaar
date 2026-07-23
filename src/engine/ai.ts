@@ -1,6 +1,6 @@
 // M4：敌人 AI — 尽量用光能量；新卡仅要求合法目标（可笨）。
 
-import { boardUsage, otherSide, sideState } from './helpers.ts';
+import { boardUsage, firstRitualIndex, otherSide, sideState } from './helpers.ts';
 import { legalDiscardTargets, legalTargets, playCard } from './play.ts';
 import { isRitualSpell } from './resolve.ts';
 import { pick } from './rng.ts';
@@ -135,10 +135,10 @@ function buildAction(
   const def = state.cardDb[card.defId];
   if (!canPlayNow(state, side, card)) return null;
 
-  const needsPosition = def.type === 'minion' || isRitualSpell(def);
+  const needsPosition = def.type === 'minion';
   const action: PlayCardAction = {
     cardId: card.id,
-    position: needsPosition ? sideState(state, side).board.length : undefined,
+    position: needsPosition ? firstRitualIndex(sideState(state, side).board) : undefined,
   };
 
   if (def.targeting?.needsDiscard) {

@@ -8,7 +8,8 @@ First-version battle system (M1–M7) is implemented, and the default match now 
 **catalog hell-warlock themed decks** (base card text from `docs/card-catalog.md`, no upgrades):
 pure-TS engine (`createBattle` / `playCard` / `useSkill` / `endTurn` / `runAutoBattle` /
 `runEnemyTurn`) with discard/graveyard, board-slot rituals (HP = execution count; sacrifice
-threshold triggers; immune to damage; drag-reorderable), global hell field, multi-cast spells that
+threshold triggers; immune to damage; always rightmost on the board — not interleaved with
+minions; multiple rituals can reorder among themselves), global hell field, multi-cast spells that
 stay in hand until casts are exhausted (each hand play costs energy), shields, rebirth,
 multi-attack, splash, and related keywords; **先锋** places tagged cards (地狱兽仪式) on
 top of the deck after shuffle at battle start; 冥界牵引 returns a discard card to hand and

@@ -4,6 +4,7 @@ import { drawOne } from './draw.ts';
 import {
   activateOrStackHell,
   boardUsage,
+  clampCombatInsertIndex,
   combatMinions,
   damageHero,
   damageMinion,
@@ -70,12 +71,10 @@ export function trySummon(
 
   const instanceId = opts?.instanceId ?? nextId(state, `sum-${side}`);
   const minion = createMinionFromDef(def, instanceId, { rebirth: opts?.rebirth });
-  const index =
-    opts?.position == null
-      ? ps.board.length
-      : Math.max(0, Math.min(opts.position, ps.board.length));
+  // 参战仆从插在仪式区左侧；默认贴着仪式区（最右参战位）。
+  const index = clampCombatInsertIndex(ps.board, opts?.position);
   ps.board.splice(index, 0, minion);
-  events.push({ type: 'summon', side, minionId: minion.id, index });
+  events.push({ type: 'summon', side, minionId: minion.id, index, defId: def.defId });
 
   if (def.defId === 'token-kest') {
     activateOrStackHell(state, events);
@@ -83,7 +82,10 @@ export function trySummon(
 
   if (def.onEnter) {
     for (const effect of def.onEnter) {
-      applyCardEffect(state, side, effect, events, { sourceDef: def });
+      applyCardEffect(state, side, effect, events, {
+        sourceDef: def,
+        hostMinionId: minion.id,
+      });
     }
   }
 
@@ -144,12 +146,10 @@ export function tryPlaceRitual(
 
   const instanceId = opts?.instanceId ?? nextId(state, `rit-${side}`);
   const unit = createRitualUnit(def, ritualKey, instanceId);
-  const index =
-    opts?.position == null
-      ? ps.board.length
-      : Math.max(0, Math.min(opts.position, ps.board.length));
+  // 仪式永远贴在棋盘最右侧（现有仪式之后）。
+  const index = ps.board.length;
   ps.board.splice(index, 0, unit);
-  events.push({ type: 'summon', side, minionId: unit.id, index });
+  events.push({ type: 'summon', side, minionId: unit.id, index, defId: def.defId });
   events.push({
     type: 'ritualUpdate',
     side,
@@ -172,6 +172,8 @@ export interface EffectContext {
   ritualPlaced?: boolean;
   /** 仪式因场满未能占位 */
   ritualFailed?: boolean;
+  /** 入场效果召唤时：次生仆从贴在该主仆从右侧 */
+  hostMinionId?: string;
 }
 
 export function applyCardEffect(
@@ -254,8 +256,17 @@ export function applyCardEffect(
     }
     case 'summon': {
       const count = effect.count ?? 1;
+      const ps = sideState(state, actingSide);
       for (let i = 0; i < count; i += 1) {
-        trySummon(state, actingSide, effect.defId, events, { rebirth: effect.rebirth });
+        let position: number | undefined;
+        if (ctx.hostMinionId) {
+          const hostIdx = ps.board.findIndex((m) => m.id === ctx.hostMinionId);
+          if (hostIdx >= 0) position = hostIdx + 1 + i;
+        }
+        trySummon(state, actingSide, effect.defId, events, {
+          rebirth: effect.rebirth,
+          position,
+        });
       }
       break;
     }

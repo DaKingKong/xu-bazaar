@@ -5,6 +5,7 @@
 }
 
 .app__header {
+  position: relative;
   text-align: center;
   margin-bottom: 1rem;
 }
@@ -23,6 +24,37 @@
   margin: 0.2rem 0 0;
   color: #9aa4b2;
   font-size: 0.9rem;
+}
+
+.playback-speed {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: inline-flex;
+  gap: 0.2rem;
+}
+
+.playback-speed__btn {
+  min-width: 2rem;
+  padding: 0.15rem 0.4rem;
+  font: inherit;
+  font-size: 0.72rem;
+  color: #aeb8c7;
+  background: #1a2740;
+  border: 1px solid #3a4f72;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.playback-speed__btn:hover {
+  color: #e8eef8;
+  border-color: #63e6ff;
+}
+
+.playback-speed__btn--active {
+  color: #0b1220;
+  background: #63e6ff;
+  border-color: #63e6ff;
 }
 
 .app__body {
@@ -474,6 +506,24 @@
   list-style: none;
   margin: 0;
   padding: 0;
+  width: 100%;
+}
+
+.board__zone {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 1.4rem;
+  align-items: center;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.board__zone--ritual {
+  margin-left: 0.35rem;
+  padding-left: 0.85rem;
+  border-left: 1px dashed #3a4a63;
 }
 
 .board__empty {

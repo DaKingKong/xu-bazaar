@@ -94,26 +94,34 @@ const lungeKeyframes = (side: Side): number[] => {
   return [0, -dir * RETREAT_DISTANCE, dir * LUNGE_DISTANCE, 0];
 };
 
-const COMBAT_TRANSITION: Transition = {
+const COMBAT_TRANSITION_BASE = {
   duration: 0.8,
   // 突进峰值约在 60% 处，与 store 事件触发即扣血的时机大致对齐（视觉上突进即命中）。
-  ease: ['easeOut', 'easeIn', 'easeIn'],
-  times: [0, 0.25, 0.6, 1],
+  ease: ['easeOut', 'easeIn', 'easeIn'] as const,
+  times: [0, 0.25, 0.6, 1] as number[],
 };
 
 // 角色不参与自动战斗攻击（不进入攻击队列），受击时只做「放大再缩小回位」反应，绝不前冲。
 const HERO_HIT_SCALE = [1, 1.2, 1];
 
-const HIT_TRANSITION: Transition = {
+const HIT_TRANSITION_BASE = {
   duration: 0.64,
-  ease: ['easeOut', 'easeIn'],
-  times: [0, 0.45, 1],
+  ease: ['easeOut', 'easeIn'] as const,
+  times: [0, 0.45, 1] as number[],
 };
+
+function scaleTransition(
+  base: { duration: number; ease: Transition['ease']; times: number[] },
+  speed: number,
+): Transition {
+  return { ...base, duration: base.duration / speed };
+}
 
 // 飘字：受到伤害时在实体上方飘出「-N HP」。锚定在实体（.frame）内部，随其移动。
 function DamageFloaters({ match }: { match: (f: FloaterState) => boolean }) {
   const floaters = useBattleStore((s) => s.floaters);
   const clearFloater = useBattleStore((s) => s.clearFloater);
+  const speed = useBattleStore((s) => s.playbackSpeed);
   const mine = floaters.filter(match);
   if (mine.length === 0) return null;
   return (
@@ -124,7 +132,7 @@ function DamageFloaters({ match }: { match: (f: FloaterState) => boolean }) {
           className="damage-floater"
           initial={{ opacity: 0, y: 4, scale: 0.7 }}
           animate={{ opacity: [0, 1, 1, 0], y: -42, scale: 1 }}
-          transition={{ duration: 1.6, times: [0, 0.15, 0.7, 1], ease: 'easeOut' }}
+          transition={{ duration: 1.6 / speed, times: [0, 0.15, 0.7, 1], ease: 'easeOut' }}
           onAnimationComplete={() => clearFloater(f.id)}
         >
           -{f.amount}HP
@@ -159,6 +167,7 @@ function HeroArea({
   const relics = ps.hero.relics ?? [];
   // 角色永远不是自动战斗的攻击方（只有仆从会攻击）；仅在受击时做后退受创反应。
   const isHit = anim?.target?.kind === 'hero' && anim.target.side === side;
+  const speed = useBattleStore((s) => s.playbackSpeed);
   const skillDisabled =
     !skillInteractive ||
     !skill ||
@@ -181,7 +190,7 @@ function HeroArea({
         disabled={!selectable}
         onClick={() => onSelect({ kind: 'hero', side })}
         animate={{ scale: isHit ? HERO_HIT_SCALE : 1 }}
-        transition={isHit ? HIT_TRANSITION : { duration: 0.2 }}
+        transition={isHit ? scaleTransition(HIT_TRANSITION_BASE, speed) : { duration: 0.2 / speed }}
       >
         <span className="hero__label">{ps.hero.name}</span>
         <span className="hero__avatar" aria-hidden />
@@ -299,6 +308,7 @@ function MinionView({
   const isTarget =
     anim?.target?.kind === 'minion' && anim.target.side === side && anim.target.id === minion.id;
   const inCombat = isAttacker || isTarget;
+  const speed = useBattleStore((s) => s.playbackSpeed);
   return (
     <motion.button
       type="button"
@@ -314,7 +324,11 @@ function MinionView({
         y: inCombat ? lungeKeyframes(side) : 0,
       }}
       exit={{ opacity: 0, scale: 0.4, y: side === 'enemy' ? -20 : 20 }}
-      transition={inCombat ? COMBAT_TRANSITION : { type: 'spring', stiffness: 500, damping: 30 }}
+      transition={
+        inCombat
+          ? scaleTransition(COMBAT_TRANSITION_BASE, speed)
+          : { type: 'spring', stiffness: 500, damping: 30 }
+      }
     >
       <MinionInner view={view} minion={minion} />
       <DamageFloaters
@@ -325,12 +339,21 @@ function MinionView({
 }
 
 // --- 可拖拽的玩家仆从（玩家阶段重排）---
-function DraggableMinion({ view, minion }: { view: BattleState; minion: Minion }) {
+function DraggableMinion({
+  view,
+  minion,
+  drag,
+}: {
+  view: BattleState;
+  minion: Minion;
+  drag: boolean;
+}) {
   return (
     <Reorder.Item
       value={minion}
       layout
-      className={minionClass(minion, { 'minion--draggable': true })}
+      drag={drag}
+      className={minionClass(minion, { 'minion--draggable': drag })}
       initial={{ opacity: 0, scale: 0.6, y: 20 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.4, y: 20 }}
@@ -434,7 +457,7 @@ function EnergyPips({ energy, maxEnergy }: { energy: number; maxEnergy: number }
 }
 
 // --- 玩家仆从区（可拖拽重排）---
-// 为了拖拽时流畅，Reorder.Group 使用本地受控顺序，拖拽结束后才将新顺序同步到 store。
+// 仆从区与仪式区拆开：仪式永远在右；仅仪式≥2 时可在仪式区内重排。
 function PlayerReorderBoard({
   view,
   onCommit,
@@ -443,30 +466,55 @@ function PlayerReorderBoard({
   onCommit: (orderedIds: string[]) => void;
 }) {
   const board = view.player.board;
-  const [order, setOrder] = useState<Minion[]>(board);
+  const combat = board.filter((m) => !m.ritual);
+  const rituals = board.filter((m) => m.ritual);
+  const [combatOrder, setCombatOrder] = useState(combat);
+  const [ritualOrder, setRitualOrder] = useState(rituals);
 
-  // 当权威 board 变化（只要 id 集合/顺序变了）时，重新同步本地顺序。
   const boardKey = board.map((m) => m.id).join(',');
   useEffect(() => {
-    setOrder(board);
+    setCombatOrder(board.filter((m) => !m.ritual));
+    setRitualOrder(board.filter((m) => m.ritual));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardKey]);
 
+  const commitAll = (nextCombat: Minion[], nextRituals: Minion[]) => {
+    onCommit([...nextCombat, ...nextRituals].map((m) => m.id));
+  };
+
   return (
-    <Reorder.Group
-      as="div"
-      axis="x"
-      values={order}
-      onReorder={setOrder}
-      className="board__reorder"
-      onPointerUp={() => onCommit(order.map((m) => m.id))}
-    >
-      <AnimatePresence>
-        {order.map((m) => (
-          <DraggableMinion key={m.id} view={view} minion={m} />
-        ))}
-      </AnimatePresence>
-    </Reorder.Group>
+    <div className="board__reorder">
+      <Reorder.Group
+        as="div"
+        axis="x"
+        values={combatOrder}
+        onReorder={setCombatOrder}
+        className="board__zone board__zone--combat"
+        onPointerUp={() => commitAll(combatOrder, ritualOrder)}
+      >
+        <AnimatePresence>
+          {combatOrder.map((m) => (
+            <DraggableMinion key={m.id} view={view} minion={m} drag={combatOrder.length > 1} />
+          ))}
+        </AnimatePresence>
+      </Reorder.Group>
+      {ritualOrder.length > 0 && (
+        <Reorder.Group
+          as="div"
+          axis="x"
+          values={ritualOrder}
+          onReorder={setRitualOrder}
+          className="board__zone board__zone--ritual"
+          onPointerUp={() => commitAll(combatOrder, ritualOrder)}
+        >
+          <AnimatePresence>
+            {ritualOrder.map((m) => (
+              <DraggableMinion key={m.id} view={view} minion={m} drag={ritualOrder.length > 1} />
+            ))}
+          </AnimatePresence>
+        </Reorder.Group>
+      )}
+    </div>
   );
 }
 
@@ -480,9 +528,11 @@ function App() {
   const setPending = useBattleStore((s) => s.setPending);
   const playCard = useBattleStore((s) => s.playCard);
   const castSkill = useBattleStore((s) => s.useSkill);
-  const reorderMinion = useBattleStore((s) => s.reorderMinion);
+  const setPlayerBoardOrder = useBattleStore((s) => s.setPlayerBoardOrder);
   const endTurn = useBattleStore((s) => s.endTurn);
   const setPlayerMaxEnergy = useBattleStore((s) => s.setPlayerMaxEnergy);
+  const playbackSpeed = useBattleStore((s) => s.playbackSpeed);
+  const setPlaybackSpeed = useBattleStore((s) => s.setPlaybackSpeed);
 
   useEffect(() => {
     if (!view) newGame();
@@ -516,14 +566,17 @@ function App() {
         : null;
 
   const isPlacing =
-    isPlayerTurn &&
-    pending?.kind === 'card' &&
-    !!pendingDef &&
-    (pendingDef.type === 'minion' || isRitualSpell(pendingDef));
+    isPlayerTurn && pending?.kind === 'card' && !!pendingDef && pendingDef.type === 'minion';
   const isDiscardPick = isPlayerTurn && pending?.kind === 'discardPick';
   const isTargeting = isPlayerTurn && !!targetingDef?.targeting?.needsTarget;
+  const combatCount = view.player.board.filter((m) => !m.ritual).length;
+  const ritualCount = view.player.board.filter((m) => m.ritual).length;
   const canReorder =
-    isPlayerTurn && !isTargeting && !isPlacing && !isDiscardPick && view.player.board.length > 1;
+    isPlayerTurn &&
+    !isTargeting &&
+    !isPlacing &&
+    !isDiscardPick &&
+    (combatCount > 1 || ritualCount > 1);
   const legal: TargetRef[] =
     isTargeting && targetingDef ? legalTargets(view, 'player', targetingDef) : [];
 
@@ -571,8 +624,12 @@ function App() {
       setPending({ kind: 'discardPick', cardId: card.id });
       return;
     }
-    if (def.type === 'minion' || isRitualSpell(def)) {
-      if (view.player.board.length === 0) {
+    if (isRitualSpell(def)) {
+      playCard({ cardId: card.id });
+      return;
+    }
+    if (def.type === 'minion') {
+      if (view.player.board.filter((m) => !m.ritual).length === 0) {
         playCard({ cardId: card.id, position: 0 });
       } else {
         setPending({ kind: 'card', cardId: card.id });
@@ -605,24 +662,12 @@ function App() {
     playCard({ cardId: pendingCard.id, position: index });
   };
 
-  // 拖拽结束：将新顺序与权威 board 对比，找出第一个变动位置并提交 reorderMinion。
+  // 拖拽结束：提交全序（已保证仆从在左、仪式在右）。
   const onReorderCommit = (orderedIds: string[]) => {
     const currentIds = view.player.board.map((m) => m.id);
     if (orderedIds.length !== currentIds.length) return;
-    if (orderedIds.every((id, i) => id === currentIds[i])) return; // 无变化
-    // 找到第一个不同位置：被移动的卡为 orderedIds 在该位置的元素。
-    let from = -1;
-    let to = -1;
-    for (let i = 0; i < currentIds.length; i += 1) {
-      if (currentIds[i] !== orderedIds[i]) {
-        to = i;
-        from = currentIds.indexOf(orderedIds[i]);
-        break;
-      }
-    }
-    if (from >= 0 && to >= 0 && from !== to) {
-      reorderMinion(from, to);
-    }
+    if (orderedIds.every((id, i) => id === currentIds[i])) return;
+    setPlayerBoardOrder(orderedIds);
   };
 
   const phaseText =
@@ -634,9 +679,11 @@ function App() {
           ? '自动战斗'
           : '战斗结束';
 
-  // 选目标/放置阶段：渲染可点击仆从 + 插入槽。
+  // 选目标/放置阶段：渲染可点击仆从 + 插入槽（仅参战区；仪式固定在右，不插槽）。
   const renderPlayerBoardSelectable = () => {
     const board = view.player.board;
+    const combat = board.filter((m) => !m.ritual);
+    const rituals = board.filter((m) => m.ritual);
     const slots: React.ReactNode[] = [];
     if (isPlacing) {
       slots.push(
@@ -649,7 +696,7 @@ function App() {
         />,
       );
     }
-    board.forEach((m, i) => {
+    combat.forEach((m, i) => {
       slots.push(
         <MinionView
           key={m.id}
@@ -673,6 +720,23 @@ function App() {
         );
       }
     });
+    if (rituals.length > 0) {
+      slots.push(
+        <div key="ritual-zone" className="board__zone board__zone--ritual">
+          {rituals.map((m) => (
+            <MinionView
+              key={m.id}
+              view={view}
+              minion={m}
+              side="player"
+              selectable={false}
+              anim={anim}
+              onSelect={onSelectTarget}
+            />
+          ))}
+        </div>,
+      );
+    }
     return slots;
   };
 
@@ -681,6 +745,19 @@ function App() {
       <header className="app__header">
         <h1>xu-bazaar</h1>
         <p>轻量化 PVE 卡牌对战 · 回合 {view.turn}</p>
+        <div className="playback-speed" role="group" aria-label="动画倍速">
+          {([1, 2, 3] as const).map((speed) => (
+            <button
+              key={speed}
+              type="button"
+              className={`playback-speed__btn${playbackSpeed === speed ? ' playback-speed__btn--active' : ''}`}
+              aria-pressed={playbackSpeed === speed}
+              onClick={() => setPlaybackSpeed(speed)}
+            >
+              {speed}x
+            </button>
+          ))}
+        </div>
       </header>
 
       <div className="app__body">
@@ -828,7 +905,7 @@ function App() {
       )}
 
       {canReorder && (
-        <div className="hint hint--reorder">拖拽可重排你的仆从与仪式</div>
+        <div className="hint hint--reorder">仆从可重排；仪式固定在右侧，多枚仪式时可在仪式区内重排</div>
       )}
 
       <AnimatePresence>

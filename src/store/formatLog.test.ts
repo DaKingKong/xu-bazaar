@@ -106,7 +106,7 @@ describe('formatLog', () => {
       )?.text,
     ).toBe('你打出「火球术」，目标：敌人的「火焰人」');
     expect(
-      formatLog({ type: 'summon', side: 'player', minionId: 'm_new', index: 0 }, undefined, view, auth)
+      formatLog({ type: 'summon', side: 'player', minionId: 'm_new', index: 0, defId: 'minion-ice' }, undefined, view, auth)
         ?.text,
     ).toBe('你召唤了「石像守卫」');
   });

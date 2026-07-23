@@ -228,6 +228,22 @@ describe('M3 出牌', () => {
     expect(state.player.hand).toHaveLength(2);
   });
 
+  it('护盾优先于生命：未破盾不掉血；溢出才扣 HP', () => {
+    const s = mkState({
+      player: mkPlayer('player', {
+        board: [mkMinion('p1', 1, 5)],
+      }),
+    });
+    s.player.board[0]!.shield = 4;
+    damageMinion(s, 'player', 'p1', 3, []);
+    expect(s.player.board[0]!.shield).toBe(1);
+    expect(s.player.board[0]!.hp).toBe(5);
+
+    damageMinion(s, 'player', 'p1', 3, []);
+    expect(s.player.board[0]!.shield).toBe(0);
+    expect(s.player.board[0]!.hp).toBe(3);
+  });
+
   it('灵光之盾：两次打出各扣费，第二次用尽进弃牌', () => {
     const hand: CardInstance[] = [{ id: 'ag', defId: 'spell-aegis' }];
     const s = mkState({

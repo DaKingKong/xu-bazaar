@@ -215,7 +215,7 @@ type BattleEvent =
   | { type: 'fatigue'; side: Side; damage: number; generatedAttack: number }
   | { type: 'playCard'; side: Side; cardId: EntityId; target?: TargetRef }
   | { type: 'useSkill'; side: Side; skillId: string; target?: TargetRef }
-  | { type: 'summon'; side: Side; minionId: EntityId; index: number } // 插入位置
+  | { type: 'summon'; side: Side; minionId: EntityId; index: number; defId: string } // 插入位置；defId 供展示层在终局已移除时回放
   | { type: 'attack'; attacker: TargetRef; target: TargetRef; damage: number }
   | { type: 'counter'; unit: TargetRef; damage: number }             // 双向反伤
   | { type: 'death'; side: Side; minionId: EntityId }

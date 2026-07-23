@@ -20,6 +20,9 @@ export {
   minionRef,
   heroSkillDef,
   combatMinions,
+  ritualMinions,
+  firstRitualIndex,
+  normalizeBoardOrder,
   isRitual,
   scaleAttributeGain,
 } from './helpers.ts';

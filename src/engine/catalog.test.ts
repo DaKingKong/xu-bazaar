@@ -118,7 +118,8 @@ describe('catalog-deck-v1', () => {
     });
     const { state } = playCard(s, { cardId: 'd', position: 0 });
     expect(state.player.board).toHaveLength(2);
-    expect(state.player.board.map((m) => m.defId).sort()).toEqual([
+    // 次生仆从紧挨主仆从右侧
+    expect(state.player.board.map((m) => m.defId)).toEqual([
       'minion-demon',
       'token-imp-demon',
     ]);
@@ -130,6 +131,25 @@ describe('catalog-deck-v1', () => {
     });
     const r2 = playCard(s2, { cardId: 'ds' });
     expect(r2.state.player.board[0]!.rebirth).toBe(1);
+  });
+
+  it('入场召唤的次生仆从插在主仆从右侧（中间插入时）', () => {
+    const s = mkState({
+      player: mkPlayer('player', {
+        hand: [{ id: 'd', defId: 'minion-demon' }],
+        energy: 4,
+        board: [mkMinion('left', 1, 3), mkMinion('right', 1, 3)],
+      }),
+    });
+    const { state } = playCard(s, { cardId: 'd', position: 1 });
+    expect(state.player.board.map((m) => m.defId)).toEqual([
+      'minion-ice',
+      'minion-demon',
+      'token-imp-demon',
+      'minion-ice',
+    ]);
+    expect(state.player.board[0]!.id).toBe('left');
+    expect(state.player.board[3]!.id).toBe('right');
   });
 
   it('仪式上场：恶魔传送门占 1 格 HP5；地狱兽仪式占 2 格 HP1', () => {
@@ -156,6 +176,43 @@ describe('catalog-deck-v1', () => {
     expect(beast.hp).toBe(1);
     expect(beast.size).toBe(2);
     expect(beast.tags).toContain('large');
+  });
+
+  it('仪式永远在右侧：有仆从时上场贴右；召唤物插在仪式左侧', () => {
+    let s = mkState({
+      player: mkPlayer('player', {
+        hand: [
+          { id: 'portal', defId: 'spell-demon-portal' },
+          { id: 'ice', defId: 'minion-ice' },
+        ],
+        energy: 8,
+        board: [mkMinion('left', 1, 3)],
+      }),
+    });
+    // 即便传入中间 position，仪式仍贴最右
+    s = playCard(s, { cardId: 'portal', position: 0 }).state;
+    expect(s.player.board).toHaveLength(2);
+    expect(s.player.board[0]!.id).toBe('left');
+    expect(s.player.board[1]!.ritual?.ritualKey).toBe('demonPortal');
+
+    s = playCard(s, { cardId: 'ice', position: 0 }).state;
+    expect(s.player.board[0]!.defId).toBe('minion-ice');
+    expect(s.player.board[1]!.id).toBe('left');
+    expect(s.player.board.at(-1)!.ritual?.ritualKey).toBe('demonPortal');
+
+    // 献祭满额召唤的小恶魔也在仪式左侧
+    const portalId = s.player.board.at(-1)!.id;
+    for (let i = 0; i < 5; i += 1) {
+      const fodder = mkMinion(`die${i}`, 0, 1);
+      const ritAt = s.player.board.findIndex((m) => m.id === portalId);
+      s.player.board.splice(ritAt, 0, fodder);
+      damageMinion(s, 'player', fodder.id, 1, []);
+    }
+    const ids = s.player.board.map((m) => m.defId);
+    const portalIdx = ids.lastIndexOf('spell-demon-portal');
+    const impIdx = ids.indexOf('token-imp-portal');
+    expect(impIdx).toBeGreaterThanOrEqual(0);
+    expect(impIdx).toBeLessThan(portalIdx);
   });
 
   it('仪式献祭：5 次友方死亡召唤小恶魔、扣 HP，重置献祭；HP 归零进弃牌', () => {
@@ -187,7 +244,9 @@ describe('catalog-deck-v1', () => {
     for (let wave = 0; wave < 4; wave += 1) {
       for (let i = 0; i < 5; i += 1) {
         const fodder = mkMinion(`f${wave}_${i}`, 0, 1);
-        s.player.board.push(fodder);
+        const ritAt = s.player.board.findIndex((m) => m.ritual);
+        if (ritAt < 0) s.player.board.push(fodder);
+        else s.player.board.splice(ritAt, 0, fodder);
         damageMinion(s, 'player', fodder.id, 1, []);
       }
     }
