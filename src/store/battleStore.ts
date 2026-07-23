@@ -51,6 +51,7 @@ const EVENT_DELAY: Partial<Record<BattleEvent['type'], number>> = {
   attack: 880,
   counter: 760,
   death: 260,
+  rebirth: 320,
   heal: 300,
   gameOver: 200,
 };
@@ -134,6 +135,14 @@ function applyEventToView(view: BattleState, ev: BattleEvent, authoritative: Bat
       const ps = sideState(view, ev.side);
       const idx = ps.board.findIndex((m) => m.id === ev.minionId);
       if (idx >= 0) ps.board.splice(idx, 1);
+      break;
+    }
+    case 'rebirth': {
+      const m = sideState(view, ev.side).board.find((x) => x.id === ev.minionId);
+      if (m) {
+        m.hp = m.maxHp;
+        m.rebirth = Math.max(0, (m.rebirth ?? 1) - 1);
+      }
       break;
     }
     case 'heal': {

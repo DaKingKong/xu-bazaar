@@ -219,8 +219,51 @@ function MinionInner({ view, minion }: { view: BattleState; minion: Minion }) {
       <span className="minion__name">{def?.name ?? minion.defId}</span>
       <span className="badge badge--atk stat stat--atk">{minion.attack}</span>
       <span className="badge badge--hp stat stat--hp">{minion.hp}</span>
+      {(minion.shield ?? 0) > 0 && (
+        <span className="badge badge--shield" title="护盾">
+          盾{minion.shield}
+        </span>
+      )}
+      {(minion.armor ?? 0) > 0 && (
+        <span className="badge badge--armor" title="装甲">
+          甲{minion.armor}
+        </span>
+      )}
       {minion.keywords.includes('taunt') && <span className="badge badge--taunt">嘲讽</span>}
     </>
+  );
+}
+
+const RITUAL_LABEL: Record<string, string> = {
+  demonPortal: '传送门',
+  hellBeast: '地狱兽',
+};
+
+function FieldStrip({ view }: { view: BattleState }) {
+  const rituals = [
+    ...view.player.rituals.map((r) => ({ ...r, owner: '我' as const })),
+    ...view.enemy.rituals.map((r) => ({ ...r, owner: '敌' as const })),
+  ];
+  return (
+    <div className="field-strip" aria-label="场地与仪式">
+      <div
+        className={`field-chip field-chip--hell${view.hell.intensity > 0 ? ' field-chip--active' : ''}`}
+        title="全局地狱场地"
+      >
+        {view.hell.intensity > 0 ? `地狱×${view.hell.intensity}` : '场地'}
+      </div>
+      {rituals.map((r) => (
+        <div
+          key={r.id}
+          className={`field-chip field-chip--ritual field-chip--${r.owner === '我' ? 'player' : 'enemy'}`}
+          title={`${r.owner}方仪式`}
+        >
+          <span className="field-chip__owner">{r.owner}</span>
+          <span className="field-chip__name">{RITUAL_LABEL[r.ritualKey] ?? r.ritualKey}</span>
+          <span className="field-chip__sac">{r.sacrifice}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -662,20 +705,7 @@ function App() {
         </section>
 
         <div className="midline">
-          <div
-            className="field-effect"
-            title="场地效果"
-            aria-label="场地效果"
-          >
-            {view.hell.intensity > 0 ? `地狱×${view.hell.intensity}` : '场地'}
-            {view.player.rituals.length > 0 && (
-              <span className="field-effect__rituals">
-                {' '}
-                仪式
-                {view.player.rituals.map((r) => `${r.ritualKey[0]}${r.sacrifice}`).join(' ')}
-              </span>
-            )}
-          </div>
+          <FieldStrip view={view} />
           <div className="midline__energy midline__energy--enemy">
             <span className="midline__side">敌</span>
             <EnergyPips energy={view.enemy.energy} />

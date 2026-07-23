@@ -180,7 +180,8 @@ function applyShieldThenHp(minion: Minion, amount: number): number {
 
 /**
  * 对仆从造成伤害；护盾优先；重生可阻止移除。
- * 返回是否因此「真正击杀」（移除出场）。
+ * 返回：未命中/无伤害 → false；真正击杀移除 → true；命中但存活或重生 → false。
+ * 若发生重生，opts.outReborn?.value 会设为 true。
  */
 export function damageMinion(
   state: BattleState,
@@ -188,7 +189,11 @@ export function damageMinion(
   minionId: string,
   amount: number,
   events: BattleEvent[],
-  opts?: { fromLifestealSource?: { side: Side; minionId: string } },
+  opts?: {
+    fromLifestealSource?: { side: Side; minionId: string };
+    /** 若本次伤害触发了重生，设为 true（供自动战斗取消后续连击） */
+    outReborn?: { value: boolean };
+  },
 ): boolean {
   const ps = sideState(state, side);
   const idx = ps.board.findIndex((m) => m.id === minionId);
@@ -208,6 +213,9 @@ export function damageMinion(
   if ((minion.rebirth ?? 0) > 0) {
     minion.rebirth = (minion.rebirth ?? 0) - 1;
     minion.hp = minion.maxHp;
+    // 行动完成标记继承重生前（已攻击的仍算本回合已行动）
+    events.push({ type: 'rebirth', side, minionId });
+    if (opts?.outReborn) opts.outReborn.value = true;
     return false;
   }
 

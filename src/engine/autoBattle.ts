@@ -31,21 +31,23 @@ function adjacentMinionIds(board: Minion[], targetId: string): string[] {
   return ids;
 }
 
+/** @returns 攻击方是否在本击中因反伤触发了重生（应取消后续连击） */
 function resolveOneSwing(
   state: BattleState,
   attackerSide: Side,
   attackerId: string,
   rng: Rng,
   events: BattleEvent[],
-): void {
-  if (isEnded(state)) return;
+): boolean {
+  if (isEnded(state)) return false;
   const attacker = sideState(state, attackerSide).board.find((m) => m.id === attackerId);
-  if (!attacker) return;
-  if (attacker.attack === 0) return;
+  if (!attacker) return false;
+  if (attacker.attack === 0) return false;
 
   const defSide = otherSide(attackerSide);
   const defBoard = sideState(state, defSide).board;
   const lifestealOpts = { fromLifestealSource: { side: attackerSide, minionId: attackerId } };
+  const attackerReborn = { value: false };
 
   if (defBoard.length > 0) {
     const target = chooseTargetMinion(defBoard, rng);
@@ -69,7 +71,9 @@ function resolveOneSwing(
       });
     }
     damageMinion(state, defSide, targetId, attackerDamage, events, lifestealOpts);
-    damageMinion(state, attackerSide, attacker.id, targetDamage, events);
+    damageMinion(state, attackerSide, attacker.id, targetDamage, events, {
+      outReborn: attackerReborn,
+    });
 
     if (splash && !isEnded(state)) {
       for (const adjId of adj) {
@@ -78,7 +82,12 @@ function resolveOneSwing(
         damageMinion(state, defSide, adjId, attackerDamage, events, lifestealOpts);
       }
     }
-    return;
+
+    if (attackerReborn.value) {
+      const m = sideState(state, attackerSide).board.find((x) => x.id === attackerId);
+      if (m) m.hasAttackedThisTurn = true;
+    }
+    return attackerReborn.value;
   }
 
   const defHero = sideState(state, defSide).hero;
@@ -97,8 +106,16 @@ function resolveOneSwing(
       unit: minionRef(attackerSide, attacker.id),
       damage: defHero.attack,
     });
-    damageMinion(state, attackerSide, attacker.id, defHero.attack, events);
+    damageMinion(state, attackerSide, attacker.id, defHero.attack, events, {
+      outReborn: attackerReborn,
+    });
   }
+
+  if (attackerReborn.value) {
+    const m = sideState(state, attackerSide).board.find((x) => x.id === attackerId);
+    if (m) m.hasAttackedThisTurn = true;
+  }
+  return attackerReborn.value;
 }
 
 function resolveMinionAttacks(
@@ -110,12 +127,17 @@ function resolveMinionAttacks(
 ): void {
   const attacker = sideState(state, attackerSide).board.find((m) => m.id === attackerId);
   if (!attacker) return;
+  if (attacker.hasAttackedThisTurn) return;
   const swings = 1 + (attacker.multiAttack ?? 0);
   for (let i = 0; i < swings; i += 1) {
     if (isEnded(state)) return;
     if (!sideState(state, attackerSide).board.some((m) => m.id === attackerId)) return;
-    resolveOneSwing(state, attackerSide, attackerId, rng, events);
+    const reborn = resolveOneSwing(state, attackerSide, attackerId, rng, events);
+    // 本击中重生：行动完成标记继承，不再打剩余连击
+    if (reborn) return;
   }
+  const m = sideState(state, attackerSide).board.find((x) => x.id === attackerId);
+  if (m) m.hasAttackedThisTurn = true;
 }
 
 function resolveSideAttacks(state: BattleState, side: Side, rng: Rng, events: BattleEvent[]): void {
@@ -132,6 +154,13 @@ export function runAutoBattle(state: BattleState, rng: Rng): BattleResult {
   if (isEnded(s)) return { state: s, events };
 
   s.phase = 'autoBattle';
+
+  // 新一轮自动战斗前清行动标记
+  for (const side of ['player', 'enemy'] as Side[]) {
+    for (const m of sideState(s, side).board) {
+      m.hasAttackedThisTurn = false;
+    }
+  }
 
   resolveSideAttacks(s, 'player', rng, events);
   if (!isEnded(s)) resolveSideAttacks(s, 'enemy', rng, events);

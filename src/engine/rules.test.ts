@@ -521,4 +521,34 @@ describe('英雄技能 / 词条', () => {
     expect(HERO_DB[s.player.hero.defId]!.skill?.cost).toBe(2);
     expect(HERO_DB[s.enemy.hero.defId]!.skill).toBeNull();
   });
+
+  it('createBattle：传入 rng 时洗牌', () => {
+    const ordered = Array.from({ length: 12 }, (_, i) => ({
+      id: `c${i}`,
+      defId: 'minion-ice',
+    }));
+    const s1 = createBattle(
+      {
+        player: { hero: { defId: HELL_WARLOCK_ID }, deck: ordered },
+        enemy: { hero: { defId: DUMMY_HERO_ID }, deck: ordered },
+        cardDb: CARD_DB,
+        heroDb: HERO_DB,
+      },
+      makeRng(1),
+    );
+    const s2 = createBattle(
+      {
+        player: { hero: { defId: HELL_WARLOCK_ID }, deck: ordered },
+        enemy: { hero: { defId: DUMMY_HERO_ID }, deck: ordered },
+        cardDb: CARD_DB,
+        heroDb: HERO_DB,
+      },
+      makeRng(2),
+    );
+    const ids1 = s1.player.deck.map((c) => c.id).join(',');
+    const ids2 = s2.player.deck.map((c) => c.id).join(',');
+    const orderedIds = ordered.map((c) => c.id).join(',');
+    expect(ids1).not.toBe(orderedIds);
+    expect(ids1).not.toBe(ids2);
+  });
 });

@@ -24,3 +24,15 @@ export function randInt(rng: Rng, n: number): number {
 export function pick<T>(rng: Rng, arr: readonly T[]): T {
   return arr[randInt(rng, arr.length)];
 }
+
+/** Fisher–Yates 洗牌（返回新数组，不修改原数组）。 */
+export function shuffle<T>(rng: Rng, arr: readonly T[]): T[] {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i -= 1) {
+    const j = randInt(rng, i + 1);
+    const tmp = a[i]!;
+    a[i] = a[j]!;
+    a[j] = tmp;
+  }
+  return a;
+}

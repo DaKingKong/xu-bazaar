@@ -10,6 +10,7 @@
 import { runAiPlays } from './ai.ts';
 import { beginTurn } from './draw.ts';
 import { isEnded } from './helpers.ts';
+import { shuffle } from './rng.ts';
 import type {
   BattleInit,
   BattleResult,
@@ -43,11 +44,13 @@ function buildPlayerState(
   side: Side,
   init: PlayerInit,
   heroDb: Record<string, HeroDef>,
+  rng?: Rng,
 ): PlayerState {
+  const deck = init.deck.map((c) => ({ ...c }));
   return {
     side,
     hero: buildHero(side, init.hero, heroDb),
-    deck: init.deck.map((c) => ({ ...c })),
+    deck: rng ? shuffle(rng, deck) : deck,
     hand: [],
     board: [],
     discard: [],
@@ -58,14 +61,14 @@ function buildPlayerState(
   };
 }
 
-export function createBattle(config: BattleInit, _rng?: Rng): BattleState {
+export function createBattle(config: BattleInit, rng?: Rng): BattleState {
   const startingSide = config.startingSide ?? 'enemy';
   return {
     turn: 1,
     activeSide: startingSide,
     phase: startingSide === 'enemy' ? 'enemyPlay' : 'playerPlay',
-    player: buildPlayerState('player', config.player, config.heroDb),
-    enemy: buildPlayerState('enemy', config.enemy, config.heroDb),
+    player: buildPlayerState('player', config.player, config.heroDb, rng),
+    enemy: buildPlayerState('enemy', config.enemy, config.heroDb, rng),
     winner: null,
     fieldEffect: null,
     hell: { intensity: 0 },

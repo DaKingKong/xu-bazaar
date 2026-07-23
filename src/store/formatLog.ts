@@ -165,6 +165,14 @@ export function formatLog(
         sourceEvent: ev.type,
       };
 
+    case 'rebirth':
+      return {
+        text: `${ev.side === 'player' ? '你的' : '敌人的'}「${minionName(view, ev.side, ev.minionId)}」重生`,
+        kind: 'combat',
+        side: ev.side,
+        sourceEvent: ev.type,
+      };
+
     case 'gameOver':
       return {
         text: ev.winner === 'player' ? '你获胜！' : '敌人获胜！',

@@ -241,4 +241,30 @@ describe('catalog-deck-v1', () => {
     const { state } = runAutoBattle(s, makeRng(1));
     expect(state.enemy.hero.hp).toBe(26);
   });
+
+  it('重生：立即回满血；攻击方重生后不再打剩余连击', () => {
+    const s = mkState({
+      player: mkPlayer('player', {
+        board: [mkMinion('p1', 3, 1, { multiAttack: 1, rebirth: 1 })],
+      }),
+      enemy: mkPlayer('enemy', {
+        board: [mkMinion('e1', 5, 10)],
+      }),
+    });
+    s.player.board[0]!.maxHp = 10;
+    s.player.board[0]!.hp = 1;
+    const { state, events } = runAutoBattle(s, makeRng(1));
+    const attacks = events.filter(
+      (e) => e.type === 'attack' && e.attacker.kind === 'minion' && e.attacker.id === 'p1',
+    );
+    expect(events.some((e) => e.type === 'rebirth' && e.minionId === 'p1')).toBe(true);
+    // 重生取消连击：玩家只出手 1 次（若连击会有 2 次）
+    expect(attacks).toHaveLength(1);
+    const p1 = state.player.board.find((m) => m.id === 'p1');
+    expect(p1).toBeDefined();
+    expect(p1!.rebirth).toBe(0);
+    expect(p1!.hasAttackedThisTurn).toBe(true);
+    // 玩家一击 3 + 敌方回合反打时吃到的反伤 3 → 4
+    expect(state.enemy.board[0]!.hp).toBe(4);
+  });
 });

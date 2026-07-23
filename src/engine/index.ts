@@ -4,7 +4,7 @@
 // 随机源工具与战斗入口（见 docs/implementation-plan.md §3）。
 
 export * from './types.ts';
-export { makeRng, randInt, pick } from './rng.ts';
+export { makeRng, randInt, pick, shuffle } from './rng.ts';
 export { legalTargets, legalDiscardTargets, playCard } from './play.ts';
 export { useSkill } from './skill.ts';
 export { runAutoBattle } from './autoBattle.ts';

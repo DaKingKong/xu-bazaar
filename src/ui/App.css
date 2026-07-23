@@ -313,6 +313,34 @@
   white-space: nowrap;
 }
 
+.badge--shield {
+  left: 0;
+  top: 18%;
+  transform: translate(-50%, 0);
+  font-size: 0.6rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  background: #0f766e;
+  color: #ccfbf1;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid #2dd4bf;
+}
+
+.badge--armor {
+  left: 0;
+  bottom: 18%;
+  transform: translate(-50%, 0);
+  font-size: 0.6rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  background: #57534e;
+  color: #e7e5e4;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid #a8a29e;
+}
+
 .hero {
   display: flex;
   flex-direction: column;
@@ -529,6 +557,62 @@
   height: 34px;
   border-radius: 8px;
   justify-self: start;
+}
+
+.field-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  justify-self: start;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.field-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 28px;
+  padding: 0 0.45rem;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  line-height: 1;
+  white-space: nowrap;
+  background: #151c2a;
+  border: 1px solid #334155;
+  color: #94a3b8;
+}
+
+.field-chip--hell.field-chip--active {
+  background: #3b1219;
+  border-color: #ef4444;
+  color: #fecaca;
+}
+
+.field-chip--ritual {
+  background: #1a1528;
+  border-color: #5b4b8a;
+  color: #ddd6fe;
+}
+
+.field-chip--enemy {
+  opacity: 0.9;
+  border-style: dashed;
+}
+
+.field-chip__owner {
+  font-size: 0.62rem;
+  color: #64748b;
+}
+
+.field-chip__name {
+  font-weight: 600;
+}
+
+.field-chip__sac {
+  font-variant-numeric: tabular-nums;
+  color: #fbbf24;
 }
 
 .midline__energy {

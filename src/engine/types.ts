@@ -267,6 +267,7 @@ export type BattleEvent =
   | { type: 'attack'; attacker: TargetRef; target: TargetRef; damage: number }
   | { type: 'counter'; unit: TargetRef; damage: number }
   | { type: 'death'; side: Side; minionId: EntityId }
+  | { type: 'rebirth'; side: Side; minionId: EntityId }
   | { type: 'heal'; target: TargetRef; amount: number }
   | { type: 'energyReset'; side: Side; value: number }
   | { type: 'phaseChange'; phase: Phase }
