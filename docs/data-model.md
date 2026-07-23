@@ -167,7 +167,7 @@ interface PlayerState {
 
   deck: CardInstance[];      // 卡组（有序，抽牌从顶部）
   hand: CardInstance[];      // 手牌，上限 10
-  board: Minion[];           // 仆从区，最多 7 格（大型仆从占 2）
+  board: Minion[];           // 仆从区，最多 9 格（大型仆从占 2）
 
   energy: number;            // 当前能量
   maxEnergy: number;         // 每回合上限，固定 4
@@ -177,7 +177,7 @@ interface PlayerState {
 ```
 
 - **手牌上限**：`hand.length <= 10`，抽牌时若已满则跳过。
-- **仆从区容量**：`sum(board[i].size) <= 7`。
+- **仆从区容量**：`sum(board[i].size) <= 9`。
 
 ---
 

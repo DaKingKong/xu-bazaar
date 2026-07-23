@@ -314,6 +314,6 @@ export type Rng = () => number;
 // 战斗常量（依据 docs/battle-design.md）。
 export const MAX_ENERGY = 4;
 export const MAX_HAND_SIZE = 10;
-export const BOARD_CAPACITY = 7;
+export const BOARD_CAPACITY = 9;
 export const FIRST_TURN_DRAW = 5;
 export const PER_TURN_DRAW = 2;

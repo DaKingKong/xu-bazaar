@@ -256,15 +256,16 @@ describe('M3 出牌', () => {
     expect(st.player.discard.some((c) => c.id === 'ag')).toBe(true);
   });
 
-  it('大型仆从占两格：7 格占满不可召唤', () => {
+  it('大型仆从占两格：9 格占满不可召唤', () => {
     const board = [
       mkMinion('g1', 2, 10, { size: 2, defId: 'minion-golem-guard', tags: ['large'] }),
       mkMinion('g2', 2, 10, { size: 2, defId: 'minion-golem-guard', tags: ['large'] }),
       mkMinion('g3', 2, 10, { size: 2, defId: 'minion-golem-guard', tags: ['large'] }),
+      mkMinion('g4', 2, 10, { size: 2, defId: 'minion-golem-guard', tags: ['large'] }),
     ];
-    const hand: CardInstance[] = [{ id: 'g4', defId: 'minion-golem-guard' }];
+    const hand: CardInstance[] = [{ id: 'g5', defId: 'minion-golem-guard' }];
     const s = mkState({ player: mkPlayer('player', { board, hand, energy: 4 }) });
-    expect(() => playCard(s, { cardId: 'g4', position: 3 })).toThrow();
+    expect(() => playCard(s, { cardId: 'g5', position: 4 })).toThrow();
   });
 });
 

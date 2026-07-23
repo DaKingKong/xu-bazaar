@@ -13,7 +13,7 @@ import { damageMinion, scaleAttributeGain } from './helpers.ts';
 import { legalTargets, playCard } from './play.ts';
 import { trySummon } from './resolve.ts';
 import { makeRng } from './rng.ts';
-import type { BattleState, CardInstance, Minion, PlayerState, Side } from './types.ts';
+import type { BattleEvent, BattleState, CardInstance, Minion, PlayerState, Side } from './types.ts';
 
 function mkMinion(
   id: string,
@@ -394,5 +394,50 @@ describe('catalog-deck-v1', () => {
     expect(p1!.hasAttackedThisTurn).toBe(true);
     // 玩家一击 3 + 敌方回合反打时吃到的反伤 3 → 4
     expect(state.enemy.board[0]!.hp).toBe(4);
+  });
+
+  it('重生致死仍算死亡：献祭推进、领主回复；不进弃牌、不离场', () => {
+    let s = mkState({
+      player: mkPlayer('player', {
+        hand: [
+          { id: 'portal', defId: 'spell-demon-portal' },
+          { id: 'beast', defId: 'spell-hell-beast-ritual' },
+        ],
+        energy: 8,
+        board: [mkMinion('sticky', 1, 1, { rebirth: 1, defId: 'token-demon-summon' })],
+      }),
+    });
+    s.player.hero.hp = 20;
+    s.player.board[0]!.maxHp = 3;
+    s = playCard(s, { cardId: 'portal', position: 1 }).state;
+    s = playCard(s, { cardId: 'beast', position: 2 }).state;
+    const portal = s.player.board.find((m) => m.ritual?.ritualKey === 'demonPortal')!;
+    const beast = s.player.board.find((m) => m.ritual?.ritualKey === 'hellBeast')!;
+
+    const events: BattleEvent[] = [];
+    const killed = damageMinion(s, 'player', 'sticky', 99, events);
+    expect(killed).toBe(false);
+    expect(events.some((e) => e.type === 'rebirth' && e.minionId === 'sticky')).toBe(true);
+    expect(events.some((e) => e.type === 'death' && e.minionId === 'sticky')).toBe(false);
+
+    const sticky = s.player.board.find((m) => m.id === 'sticky');
+    expect(sticky).toBeDefined();
+    expect(sticky!.hp).toBe(3);
+    expect(sticky!.rebirth).toBe(0);
+    expect(s.player.discard.some((c) => c.defId === 'token-demon-summon')).toBe(false);
+
+    expect(portal.ritual!.sacrifice).toBe(1);
+    expect(beast.ritual!.sacrifice).toBe(1);
+    expect(s.player.hero.hp).toBe(22);
+
+    // 第二次致死：无重生，真正离场并再计一次献祭
+    const events2: BattleEvent[] = [];
+    expect(damageMinion(s, 'player', 'sticky', 99, events2)).toBe(true);
+    expect(events2.some((e) => e.type === 'death' && e.minionId === 'sticky')).toBe(true);
+    expect(s.player.board.some((m) => m.id === 'sticky')).toBe(false);
+    expect(s.player.discard.some((c) => c.defId === 'token-demon-summon')).toBe(true);
+    expect(portal.ritual!.sacrifice).toBe(2);
+    expect(beast.ritual!.sacrifice).toBe(2);
+    expect(s.player.hero.hp).toBe(24);
   });
 });

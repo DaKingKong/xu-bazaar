@@ -224,6 +224,7 @@ function applyShieldThenHp(minion: Minion, amount: number): number {
  * 对仆从造成伤害；护盾优先；重生可阻止移除。
  * 仪式占位免疫伤害。
  * 返回：未命中/无伤害 → false；真正击杀移除 → true；命中但存活或重生 → false。
+ * 重生仍计一次死亡（献祭等），但不发 death、不进弃牌。
  * 若发生重生，opts.outReborn?.value 会设为 true。
  */
 export function damageMinion(
@@ -254,9 +255,13 @@ export function damageMinion(
 
   if (minion.hp > 0) return false;
 
+  // 重生：仍视为一次死亡（推进献祭等），但不离场、不进弃牌。
   if ((minion.rebirth ?? 0) > 0) {
     minion.rebirth = (minion.rebirth ?? 0) - 1;
     minion.hp = minion.maxHp;
+    notifyRitualsOnMinionDeath(state, side, events);
+    checkRitualThresholds(state, 'player', events);
+    checkRitualThresholds(state, 'enemy', events);
     // 行动完成标记继承重生前（已攻击的仍算本回合已行动）
     events.push({ type: 'rebirth', side, minionId });
     if (opts?.outReborn) opts.outReborn.value = true;

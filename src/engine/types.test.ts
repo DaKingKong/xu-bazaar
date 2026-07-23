@@ -8,7 +8,7 @@ describe('engine core constants', () => {
   it('matches the battle design spec', () => {
     expect(MAX_ENERGY).toBe(4);
     expect(MAX_HAND_SIZE).toBe(10);
-    expect(BOARD_CAPACITY).toBe(7);
+    expect(BOARD_CAPACITY).toBe(9);
   });
 
   it('allows constructing a well-typed card definition', () => {
