@@ -5,7 +5,7 @@
 
 export * from './types.ts';
 export { makeRng, randInt, pick, shuffle } from './rng.ts';
-export { legalTargets, legalDiscardTargets, playCard } from './play.ts';
+export { legalTargets, legalDiscardTargets, playCard, attackDamage } from './play.ts';
 export { useSkill } from './skill.ts';
 export { runAutoBattle } from './autoBattle.ts';
 export { chooseCombo, runAiPlays } from './ai.ts';

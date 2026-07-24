@@ -7,13 +7,13 @@
 
 import { create } from 'zustand';
 import {
-  CARD_DB,
   DUMMY_HERO_ID,
   FATIGUE_STRIKE_DEF_ID,
   HELL_WARLOCK_ID,
-  HERO_DB,
   buildEnemyHellDeck,
   buildPlayerHellDeck,
+  snapshotCardDb,
+  snapshotHeroDb,
 } from '../data/index.ts';
 import {
   createBattle,
@@ -310,8 +310,8 @@ export const useBattleStore = create<BattleStoreState>((set, get) => {
         {
           player: { hero: { defId: HELL_WARLOCK_ID }, deck: buildPlayerHellDeck('p') },
           enemy: { hero: { defId: DUMMY_HERO_ID }, deck: buildEnemyHellDeck('e') },
-          cardDb: CARD_DB,
-          heroDb: HERO_DB,
+          cardDb: snapshotCardDb(),
+          heroDb: snapshotHeroDb(),
         },
         rng,
       );

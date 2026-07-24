@@ -925,3 +925,189 @@
   font-weight: 700;
   cursor: pointer;
 }
+
+/* --- Catalog config panel --- */
+.catalog-config {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 40;
+  text-align: left;
+}
+
+.catalog-config__toggle {
+  padding: 0.25rem 0.65rem;
+  font: inherit;
+  font-size: 0.78rem;
+  color: #aeb8c7;
+  background: #1a2740;
+  border: 1px solid #3a4f72;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.catalog-config__toggle:hover {
+  color: #e8eef8;
+  border-color: #63e6ff;
+}
+
+.catalog-config__panel {
+  position: absolute;
+  top: 2rem;
+  left: 0;
+  width: min(920px, calc(100vw - 2rem));
+  max-height: min(70vh, 560px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: #0f1624;
+  border: 1px solid #3a4f72;
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.catalog-config__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.catalog-config__tabs button {
+  padding: 0.2rem 0.55rem;
+  font: inherit;
+  font-size: 0.75rem;
+  color: #aeb8c7;
+  background: #1a2740;
+  border: 1px solid #3a4f72;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.catalog-config__tabs button.is-active {
+  color: #0b1220;
+  background: #63e6ff;
+  border-color: #63e6ff;
+}
+
+.catalog-config__search {
+  flex: 1;
+  min-width: 10rem;
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: #e8eef8;
+  background: #1a2740;
+  border: 1px solid #3a4f72;
+  border-radius: 4px;
+}
+
+.catalog-config__meta {
+  font-size: 0.72rem;
+  color: #9aa4b2;
+}
+
+.catalog-config__body {
+  display: grid;
+  grid-template-columns: minmax(10rem, 14rem) 1fr;
+  gap: 0.5rem;
+  min-height: 0;
+  flex: 1;
+}
+
+.catalog-config__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  max-height: 360px;
+  border: 1px solid #2a3346;
+  border-radius: 4px;
+}
+
+.catalog-config__list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  font-size: 0.75rem;
+  color: #c5cdd8;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #1a2740;
+  cursor: pointer;
+}
+
+.catalog-config__list button.is-active,
+.catalog-config__list button:hover {
+  background: #1a2740;
+  color: #e8eef8;
+}
+
+.catalog-config__editor {
+  width: 100%;
+  min-height: 360px;
+  resize: vertical;
+  padding: 0.5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: #e8eef8;
+  background: #121a28;
+  border: 1px solid #2a3346;
+  border-radius: 4px;
+}
+
+.catalog-config__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.catalog-config__actions button {
+  padding: 0.3rem 0.65rem;
+  font: inherit;
+  font-size: 0.75rem;
+  color: #e6ebf2;
+  background: #1a2740;
+  border: 1px solid #3a4f72;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.catalog-config__actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.catalog-config__status {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #9aa4b2;
+}
+
+.catalog-config__restart {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.75rem;
+  color: #fde68a;
+  background: #2a2410;
+  border: 1px solid #6b5a1e;
+  border-radius: 4px;
+}
+
+.catalog-config__restart button {
+  padding: 0.2rem 0.55rem;
+  font: inherit;
+  font-size: 0.72rem;
+  color: #0b1220;
+  background: #fde68a;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}

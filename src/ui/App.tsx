@@ -3,7 +3,7 @@ import { AnimatePresence, Reorder, motion } from 'framer-motion';
 import type { Transition } from 'framer-motion';
 import { useBattleStore } from '../store/battleStore.ts';
 import type { CombatAnim, FloaterState, LogEntry } from '../store/battleStore.ts';
-import { heroSkillDef, isRitualSpell, legalTargets } from '../engine/index.ts';
+import { attackDamage, heroSkillDef, isRitualSpell, legalTargets } from '../engine/index.ts';
 import type {
   BattleState,
   CardDef,
@@ -14,6 +14,7 @@ import type {
   TargetRef,
 } from '../engine/types.ts';
 import { RITUAL_DEFS } from '../engine/types.ts';
+import { CatalogConfigPanel } from './CatalogConfigPanel.tsx';
 import './App.css';
 
 
@@ -94,20 +95,20 @@ const lungeKeyframes = (side: Side): number[] => {
   return [0, -dir * RETREAT_DISTANCE, dir * LUNGE_DISTANCE, 0];
 };
 
-const COMBAT_TRANSITION_BASE = {
+const COMBAT_TRANSITION_BASE: { duration: number; ease: Transition['ease']; times: number[] } = {
   duration: 0.8,
   // 突进峰值约在 60% 处，与 store 事件触发即扣血的时机大致对齐（视觉上突进即命中）。
-  ease: ['easeOut', 'easeIn', 'easeIn'] as const,
-  times: [0, 0.25, 0.6, 1] as number[],
+  ease: ['easeOut', 'easeIn', 'easeIn'],
+  times: [0, 0.25, 0.6, 1],
 };
 
 // 角色不参与自动战斗攻击（不进入攻击队列），受击时只做「放大再缩小回位」反应，绝不前冲。
 const HERO_HIT_SCALE = [1, 1.2, 1];
 
-const HIT_TRANSITION_BASE = {
+const HIT_TRANSITION_BASE: { duration: number; ease: Transition['ease']; times: number[] } = {
   duration: 0.64,
-  ease: ['easeOut', 'easeIn'] as const,
-  times: [0, 0.45, 1] as number[],
+  ease: ['easeOut', 'easeIn'],
+  times: [0, 0.45, 1],
 };
 
 function scaleTransition(
@@ -381,7 +382,7 @@ function HandCard({
 }) {
   const def = view.cardDb[card.defId];
   const affordable = view.player.energy >= (def?.cost ?? 0);
-  const damage = card.overrideDamage ?? def?.damage;
+  const damage = def ? attackDamage(card, def) : undefined;
   const castMax = def?.castCount ?? 1;
   const castLeft = card.castsRemaining ?? castMax;
   return (
@@ -745,6 +746,7 @@ function App() {
       <header className="app__header">
         <h1>xu-bazaar</h1>
         <p>轻量化 PVE 卡牌对战 · 回合 {view.turn}</p>
+        <CatalogConfigPanel onRestartSuggested={() => newGame()} />
         <div className="playback-speed" role="group" aria-label="动画倍速">
           {([1, 2, 3] as const).map((speed) => (
             <button

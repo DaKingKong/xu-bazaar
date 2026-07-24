@@ -8,7 +8,7 @@ import { defineConfig, globalIgnores } from 'eslint/config';
 const reactRefreshPlugin = reactRefresh.default ?? reactRefresh;
 
 export default defineConfig([
-  globalIgnores(['dist', 'node_modules']),
+  globalIgnores(['dist', 'node_modules', 'scripts/**']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [js.configs.recommended, tseslint.configs.recommended],

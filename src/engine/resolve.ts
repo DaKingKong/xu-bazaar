@@ -413,7 +413,11 @@ export function resolvePlayedCard(
 function legacyEffects(def: CardDef, instance: CardInstance): CardEffect[] {
   const out: CardEffect[] = [];
   if (def.heal != null) out.push({ type: 'heal', amount: def.heal });
-  const dmg = instance.overrideDamage ?? def.damage;
+  const fromEffects = def.effects?.find((e) => e.type === 'damage');
+  const dmg =
+    instance.overrideDamage ??
+    (fromEffects?.type === 'damage' ? fromEffects.amount : undefined) ??
+    def.damage;
   if (dmg != null && dmg > 0) out.push({ type: 'damage', amount: dmg });
   return out;
 }

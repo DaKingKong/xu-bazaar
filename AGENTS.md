@@ -16,8 +16,11 @@ top of the deck after shuffle at battle start; 冥界牵引 returns a discard ca
 plays it once for free (remaining casts may stay in hand); Zustand store bridge with event
 playback; playable battle UI (including discard pick for 冥界牵引) with Framer Motion; left-side
 battle log. Default heroes: player **地狱术士**, enemy **训练假人** (no skill; enemy deck is
-demon + golem guards only). Equipment / relics remain UI placeholders. Card upgrades, growth, unlocks, and
-deckbuilding are out of scope for v1 — see `README.md` and `docs/implementation-plan.md`.
+demon + golem guards only). Static content lives in `src/data/catalog.json` (Zod-validated;
+`CARD_DB`/`HERO_DB`); header **配置** UI edits defs as draft → Save (memory + localStorage gated
+by `package.json` version, load-once on refresh) → export full JSON back to the repo. Equipment /
+relics remain UI placeholders. Card upgrades, growth, unlocks, and deckbuilding are out of scope
+for v1 — see `README.md` and `docs/implementation-plan.md`.
 
 ### Services
 
@@ -27,8 +30,9 @@ There is a single service: the Vite dev web app. Standard commands live in `pack
 - `npm run dev` — dev server on `http://localhost:5173/xu-bazaar/` (HMR; `base` is `/xu-bazaar/` for GitHub Pages).
 - `npm test` — Vitest (jsdom). `npm run build` — `tsc -b` type-check then `vite build`.
 - `npm run lint` — ESLint. `npm run format` / `npm run format:check` — Prettier.
+- Husky pre-commit runs `scripts/bump-patch.mjs` so each commit increments `package.json` patch.
 - GitHub Pages: push to `main` runs `.github/workflows/deploy.yml` →
-  `https://DaKingKong.github.io/xu-bazaar/` (Settings → Pages source must be GitHub Actions).
+ `https://DaKingKong.github.io/xu-bazaar/` (Settings → Pages source must be GitHub Actions).
 
 ### Non-obvious notes
 
@@ -43,8 +47,11 @@ There is a single service: the Vite dev web app. Standard commands live in `pack
   Don't reformat `docs/`; `npm run format:check` intentionally ignores them.
 - TS uses `verbatimModuleSyntax` + `allowImportingTsExtensions`, so intra-`src` imports must
   include the `.ts`/`.tsx` extension and type-only imports must use `import type`.
-- `vite.config.ts` sets an absolute `root` via `import.meta.url` so Vitest does not break on
-  Windows when the shell cwd uses a different drive-letter case (`d:` vs `D:`).
+- On Windows, Git Bash often starts Node with a lowercase drive letter (`d:`). Vitest then
+  fails every suite with `Cannot read properties of undefined (reading 'config')`.
+  `npm test` / `npm run test:watch` go through `scripts/run-vitest.mjs`, which respawns
+  Vitest with an uppercase drive letter on both cwd and the CLI path; `vite.config.ts`
+  also normalizes `root` the same way.
 
 ## Agent skills
 

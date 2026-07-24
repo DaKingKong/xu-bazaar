@@ -241,7 +241,25 @@ type BattleEvent =
 
 ---
 
-## 9. 与成长/解锁系统的衔接（预留）
+## 9. 静态内容文件（catalog.json）
+
+权威内容文件：`src/data/catalog.json`。
+
+```json
+{
+  "cards": [ /* CardDef[] — 1:1 引擎字段；卡牌勿再写顶层 damage/heal，改用 effects */ ],
+  "heroes": [ /* HeroDef[] */ ]
+}
+```
+
+- 加载：`src/data/schema.ts`（Zod）→ `createCatalogRuntime` 填入可变的 `CARD_DB` / `HERO_DB`。
+- 版本门禁：localStorage 副本记录 **`package.json` 的 semver**；与当前包版本不一致则丢弃并回退仓库默认。
+- 开发 UI：草稿编辑 → Save（应用 + 持久化）→ 导出整份 JSON 覆盖本文件；Refresh 时 localStorage 只读一次。
+- 测试夹具：不要写入主 catalog；可用 TS 或 `src/data/__fixtures__/`。
+
+---
+
+## 10. 与成长/解锁系统的衔接（预留）
 
 - **卡组注入**：战斗初始化接收敌我 `CardInstance[]` 卡组，卡组由战斗外系统（构筑/关卡）生成，engine 不关心来源。
 - **卡牌解锁**：data 层维护全量 `CardDef` 卡池与已解锁集合，构筑系统从已解锁集合选卡，与 engine 解耦。

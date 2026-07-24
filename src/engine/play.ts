@@ -26,6 +26,14 @@ import type {
 } from './types.ts';
 import { BOARD_CAPACITY, RITUAL_DEFS } from './types.ts';
 
+/** Direct-attack damage: instance override, else first `effects` damage, else legacy `def.damage`. */
+export function attackDamage(instance: CardInstance, def: CardDef): number {
+  if (instance.overrideDamage != null) return instance.overrideDamage;
+  const fromEffects = def.effects?.find((e) => e.type === 'damage');
+  if (fromEffects?.type === 'damage') return fromEffects.amount;
+  return def.damage ?? 0;
+}
+
 export function legalTargets(
   state: BattleState,
   actingSide: Side,
@@ -131,7 +139,7 @@ export function playCard(state: BattleState, action: PlayCardAction, _rng?: unkn
 
   if (def.type === 'attack') {
     const target = action.target!;
-    const dmg = instance.overrideDamage ?? def.damage ?? 0;
+    const dmg = attackDamage(instance, def);
     const counter = targetAttack(s, target);
     if (target.kind === 'hero') {
       damageHero(s, target.side, dmg, events);
